@@ -86,15 +86,19 @@ public class SkierClientA1P2 {
 
             ResponseStat stat;
             if (executionResult) {
-                stat = new ResponseStat(startTime,
-                        endTime,
-                        Thread.currentThread().getId(),
-                        false);
+                stat = ResponseStat.builder()
+                        .requestStartTime(startTime)
+                        .responseEndTime(endTime)
+                        .threadId(Thread.currentThread().getId())
+                        .encounteredError(false)
+                        .build();
             } else {
-                stat = new ResponseStat(startTime,
-                        endTime,
-                        Thread.currentThread().getId(),
-                        false);
+                stat = ResponseStat.builder()
+                        .requestStartTime(startTime)
+                        .responseEndTime(endTime)
+                        .threadId(Thread.currentThread().getId())
+                        .encounteredError(true)
+                        .build();
             }
 
             return Optional.of(stat);
@@ -140,7 +144,7 @@ public class SkierClientA1P2 {
                     System.out.printf("Response in thread %s took %d milliseconds in total, and has %s error\n",
                             stat.getThreadId(),
                             timeTaken,
-                            (stat.getErrorFlag()) ? "encountered" : "no");
+                            (stat.isEncounteredError()) ? "encountered" : "no");
                 } else {
                     System.out.printf("Encountered unexpected empty response\n");
                     continue;
