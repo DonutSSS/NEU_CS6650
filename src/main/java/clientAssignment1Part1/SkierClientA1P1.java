@@ -1,3 +1,6 @@
+package clientAssignment1Part1;
+
+import model.ResponseStat;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpMethod;
 import org.apache.commons.httpclient.methods.GetMethod;
@@ -8,10 +11,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.*;
 
-public class SimpleClient {
+public class SkierClientA1P1 {
     private final HttpClient client;
 
-    public SimpleClient() {
+    public SkierClientA1P1() {
         this.client = new HttpClient();
     }
 
@@ -39,16 +42,16 @@ public class SimpleClient {
 
     public static void main(String[] args) {
         final String targetUrl = "http://ec2-54-92-222-44.compute-1.amazonaws.com:8080/IntelliJ_war/hello";
-        // Simple client usecase.
+        // Simple clientAssignment1Part1 usecase.
         runSimpleClient(targetUrl);
 
-        // Multi-threaded client usecase.
+        // Multi-threaded clientAssignment1Part1 usecase.
         runMultiThreadedClients(targetUrl, 5);
     }
 
     private static void runSimpleClient(String targetUrl) {
-        System.out.printf("Run simple single threaded client toward %s\n\n", targetUrl);
-        SimpleClient client = new SimpleClient();
+        System.out.printf("Run simple single threaded clientAssignment1Part1 toward %s\n\n", targetUrl);
+        SkierClientA1P1 client = new SkierClientA1P1();
         client.executeGetRequest(targetUrl);
     }
 
@@ -73,7 +76,7 @@ public class SimpleClient {
                                                                                ExecutorService executorService) {
         // Setup the task definition.
         Callable<Optional<ResponseStat>> taskDefinition = () -> {
-            SimpleClient threadedClient = new SimpleClient();
+            SkierClientA1P1 threadedClient = new SkierClientA1P1();
             long startTime = System.currentTimeMillis();
             boolean executionResult = threadedClient.executeGetRequest(targetUrl);
             long endTime = System.currentTimeMillis();

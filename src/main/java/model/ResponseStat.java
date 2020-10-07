@@ -1,10 +1,12 @@
+package model;
+
 public class ResponseStat {
     private final long requestStartTime;
     private final long responseEndTime;
     private final long threadId;
     private final boolean encounteredError;
 
-    ResponseStat(long requestStartTime,
+    public ResponseStat(long requestStartTime,
                  long responseEndTime,
                  long threadID,
                  boolean encounteredError) {
