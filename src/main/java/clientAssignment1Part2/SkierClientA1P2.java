@@ -6,18 +6,18 @@ import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.dataformat.csv.CsvGenerator;
 import com.fasterxml.jackson.dataformat.csv.CsvMapper;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
-import lombok.NonNull;
 import model.RequestResponseStat;
 import org.apache.commons.httpclient.HttpMethod;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.kohsuke.args4j.CmdLineException;
+import utility.SkierCmdLineHelper;
 
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ExecutionException;
@@ -27,14 +27,16 @@ public class SkierClientA1P2 extends SkierClientBase {
     private final Queue<RequestResponseStat> requestStats;
 
     public SkierClientA1P2(final String serverIp,
+                           final String apiPath,
                            int serverPort,
-                           @NonNull Optional<Integer> maxThreadCount,
-                           @NonNull Optional<Integer> skierCount,
-                           @NonNull Optional<Integer> skiLiftCount,
-                           @NonNull Optional<Integer> skiDayNum,
-                           @NonNull Optional<String> resortName,
+                           int maxThreadCount,
+                           int skierCount,
+                           int skiLiftCount,
+                           int skiDayNum,
+                           String resortName,
                            final String desiredOutputFilePath) {
         super(serverIp,
+                apiPath,
                 serverPort,
                 maxThreadCount,
                 skierCount,
@@ -77,7 +79,7 @@ public class SkierClientA1P2 extends SkierClientBase {
 //                    statusCode,
 //                    Thread.currentThread().getId());
 
-            updateStatCounts(statusCode);
+            updateStatCounts(statusCode, targetUrl);
         } catch (IOException e) {
             System.out.printf("Failed to send GET request to %s, with error: %s\n\n", targetUrl, e);
             return false;
@@ -123,7 +125,7 @@ public class SkierClientA1P2 extends SkierClientBase {
 //                    statusCode,
 //                    Thread.currentThread().getId());
 
-            updateStatCounts(statusCode);
+            updateStatCounts(statusCode, targetUrl);
         } catch (IOException e) {
             System.out.printf("Failed to send POST request to %s, with error: %s\n\n", targetUrl, e);
             return false;
@@ -196,16 +198,17 @@ public class SkierClientA1P2 extends SkierClientBase {
         }
     }
 
-    public static void main(String[] args) throws JsonProcessingException, InterruptedException, ExecutionException {
-        final String targetUrl = "http://ec2-54-92-222-44.compute-1.amazonaws.com:8080/IntelliJ_war/skiers/liftrides";
+    public static void main(String[] args) throws JsonProcessingException, InterruptedException, ExecutionException, CmdLineException {
+        SkierCmdLineHelper.CommandLineArgs parsedArgs = SkierCmdLineHelper.parseCommandLineArgs(args);
 
-        SkierClientA1P2 client = new SkierClientA1P2(targetUrl,
-                8080,
-                Optional.of(256),
-                Optional.of(20000),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty(),
+        SkierClientA1P2 client = new SkierClientA1P2(parsedArgs.serverAddr,
+                parsedArgs.apiPath,
+                parsedArgs.serverPort,
+                parsedArgs.maxThreadCount,
+                parsedArgs.skierCount,
+                parsedArgs.skiLiftCount,
+                parsedArgs.skiDay,
+                parsedArgs.resortName,
                 "testRecords.csv");
 
         client.startLoadSimulation();

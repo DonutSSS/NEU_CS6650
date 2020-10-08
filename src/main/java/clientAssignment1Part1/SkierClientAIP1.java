@@ -2,20 +2,22 @@ package clientAssignment1Part1;
 
 import base.SkierClientBase;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import lombok.NonNull;
+import org.kohsuke.args4j.CmdLineException;
+import utility.SkierCmdLineHelper;
 
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 
 public class SkierClientAIP1 extends SkierClientBase {
     public SkierClientAIP1(final String serverIp,
+                           final String apiPath,
                            int serverPort,
-                           @NonNull Optional<Integer> maxThreadCount,
-                           @NonNull Optional<Integer> skierCount,
-                           @NonNull Optional<Integer> skiLiftCount,
-                           @NonNull Optional<Integer> skiDayNum,
-                           @NonNull Optional<String> resortName) {
+                           int maxThreadCount,
+                           int skierCount,
+                           int skiLiftCount,
+                           int skiDayNum,
+                           final String resortName) {
         super(serverIp,
+                apiPath,
                 serverPort,
                 maxThreadCount,
                 skierCount,
@@ -24,16 +26,17 @@ public class SkierClientAIP1 extends SkierClientBase {
                 resortName);
     }
 
-    public static void main(String[] args) throws JsonProcessingException, InterruptedException, ExecutionException {
-        final String targetUrl = "http://ec2-54-92-222-44.compute-1.amazonaws.com:8080/IntelliJ_war/skiers/liftrides";
+    public static void main(String[] args) throws JsonProcessingException, InterruptedException, ExecutionException, CmdLineException {
+        SkierCmdLineHelper.CommandLineArgs parsedArgs = SkierCmdLineHelper.parseCommandLineArgs(args);
 
-        SkierClientAIP1 client = new SkierClientAIP1(targetUrl,
-                8080,
-                Optional.of(256),
-                Optional.of(20000),
-                Optional.empty(),
-                Optional.empty(),
-                Optional.empty());
+        SkierClientAIP1 client = new SkierClientAIP1(parsedArgs.serverAddr,
+                parsedArgs.apiPath,
+                parsedArgs.serverPort,
+                parsedArgs.maxThreadCount,
+                parsedArgs.skierCount,
+                parsedArgs.skiLiftCount,
+                parsedArgs.skiDay,
+                parsedArgs.resortName);
 
         client.startLoadSimulation();
     }

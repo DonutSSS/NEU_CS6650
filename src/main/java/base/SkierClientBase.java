@@ -2,7 +2,6 @@ package base;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.NonNull;
 import model.RequestBody;
 import model.TaskResponseStat;
 import org.apache.commons.httpclient.HttpClient;
@@ -11,6 +10,7 @@ import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
+import org.apache.log4j.Logger;
 
 import java.io.IOException;
 import java.util.*;
@@ -18,6 +18,8 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 public abstract class SkierClientBase {
+    final Logger logger = Logger.getLogger(this.getClass());
+
     private static final int skiDayLenInMin = 420;
 
     private final static CountDownLatch shouldStartPhaseTwo = new CountDownLatch(1);
@@ -26,42 +28,47 @@ public abstract class SkierClientBase {
     private final MultiThreadedHttpConnectionManager connectionManager;
     protected final HttpClient client;
     private final ObjectMapper mapper;
-    private final String serverIp;
+    private final String serverAddr;
+    private final String apiPath;
     private final int serverPort;
 
     // Fields with default values.
-    private int maxThreadCount = 256;
-    private int skierCount = 50000;
-    private int skiLiftCount = 40;
-    private int skiDayNum = 1;
-    private String resortName = "SilverMt";
+    private int maxThreadCount;
+    private int skierCount;
+    private int skiLiftCount;
+    private int skiDayNum;
+    private String resortName;
 
     private final int[] skiLifts;
+    private final String targetUrl;
 
     protected int successfulRequestCount;
     protected int failedRequestCount;
 
-    public SkierClientBase(final String serverIp,
+    public SkierClientBase(final String serverAddr,
+                           final String apiPath,
                            int serverPort,
-                           @NonNull Optional<Integer> maxThreadCount,
-                           @NonNull Optional<Integer> skierCount,
-                           @NonNull Optional<Integer> skiLiftCount,
-                           @NonNull Optional<Integer> skiDayNum,
-                           @NonNull Optional<String> resortName) {
+                           int maxThreadCount,
+                           int skierCount,
+                           int skiLiftCount,
+                           int skiDayNum,
+                           final String resortName) {
         this.connectionManager = new MultiThreadedHttpConnectionManager();
         this.client = new HttpClient(connectionManager);
         this.mapper = new ObjectMapper();
-        this.serverIp = serverIp;
+        this.serverAddr = serverAddr;
+        this.apiPath = apiPath;
         this.serverPort = serverPort;
 
         // Set values if present.
-        maxThreadCount.ifPresent(value -> this.maxThreadCount = value);
-        skierCount.ifPresent(value -> this.skierCount = value);
-        skiLiftCount.ifPresent(value -> this.skiLiftCount = value);
-        skiDayNum.ifPresent(value -> this.skiDayNum = value);
-        resortName.ifPresent(value -> this.resortName = value);
+        this.maxThreadCount = maxThreadCount;
+        this.skierCount = skierCount;
+        this.skiLiftCount = skiLiftCount;
+        this.skiDayNum = skiDayNum;
+        this.resortName = resortName;
 
         this.skiLifts = getLiftRides();
+        this.targetUrl = this.serverAddr + ":" + this.serverPort + this.apiPath;
 
         this.successfulRequestCount = 0;
         this.failedRequestCount = 0;
@@ -83,7 +90,7 @@ public abstract class SkierClientBase {
 //                    statusCode,
 //                    Thread.currentThread().getId());
 
-            updateStatCounts(statusCode);
+            updateStatCounts(statusCode, targetUrl);
         } catch (IOException e) {
             System.out.printf("Failed to send GET request to %s, with error: %s\n\n", targetUrl, e);
             return false;
@@ -114,7 +121,7 @@ public abstract class SkierClientBase {
 //                    statusCode,
 //                    Thread.currentThread().getId());
 
-            updateStatCounts(statusCode);
+            updateStatCounts(statusCode, targetUrl);
         } catch (IOException e) {
             System.out.printf("Failed to send POST request to %s, with error: %s\n\n", targetUrl, e);
             return false;
@@ -170,7 +177,7 @@ public abstract class SkierClientBase {
                 (this.successfulRequestCount + this.failedRequestCount) / ((endTime - startTime) / 1000));
     }
 
-    protected void executePhaseOne() throws JsonProcessingException, InterruptedException, ExecutionException {
+    private void executePhaseOne() throws JsonProcessingException, InterruptedException, ExecutionException {
         // Setup requirements in phase 1.
         int targetThreadCount = this.maxThreadCount / 4;
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
@@ -251,16 +258,16 @@ public abstract class SkierClientBase {
         for (int i = 0; i < targetThreadCount; i++) {
             if (isPostRequest) {
                 // Prepare POST requests for current thread.
-                String[] proposedPOSTRequestBody = preparePOSTRequestsForThread(targetRequestCount, skierSplits[i], timeSlides);
+                String[] proposedPOSTRequestBody = preparePOSTRequestBody(targetRequestCount, skierSplits[i], timeSlides);
 
                 // Append to the finalized tasks list.
-                tasks.addAll(getPOSTRequests(this.serverIp, proposedPOSTRequestBody));
+                tasks.addAll(assembleTasksForPOSTRequests(this.targetUrl, proposedPOSTRequestBody));
             } else {
                 // Prepare GET requests for current thread.
-                String[] proposedGETRequests = prepareGETRequestsForThread(targetRequestCount, skierSplits[i]);
+                String[] proposedGETRequests = prepareGETRequestURL(targetRequestCount, skierSplits[i]);
 
                 // Append to the finalized tasks list.
-                tasks.addAll(getGETRequests(proposedGETRequests));
+                tasks.addAll(assembleTasksForGETRequests(proposedGETRequests));
             }
         }
 
@@ -269,16 +276,16 @@ public abstract class SkierClientBase {
 
         // Process the responses.
         if (isPhaseOne) {
-            processResponses(responses, true, false, targetRequestCount, targetThreadCount);
+            processResponsesInThread(responses, true, false, targetRequestCount, targetThreadCount);
         } else if (isPhaseTwo) {
-            processResponses(responses, false, true, targetRequestCount, targetThreadCount);
+            processResponsesInThread(responses, false, true, targetRequestCount, targetThreadCount);
         } else {
-            processResponses(responses, false, false, targetRequestCount, targetThreadCount);
+            processResponsesInThread(responses, false, false, targetRequestCount, targetThreadCount);
         }
     }
 
-    private boolean sendSerialPOSTRequests(String targetUrl,
-                                        String[] requestBody) {
+    private boolean sendSerialPOSTRequestsInThread(String targetUrl,
+                                                   String[] requestBody) {
         boolean executionResult = true;
 
         // Execute all tasks within a single Thread.
@@ -290,7 +297,7 @@ public abstract class SkierClientBase {
         return executionResult;
     }
 
-    private boolean sendSerialGETRequests(String[] targetUrls) {
+    private boolean sendSerialGETRequestsInThread(String[] targetUrls) {
         boolean executionResult = true;
 
         // Execute all tasks within a single Thread.
@@ -301,13 +308,13 @@ public abstract class SkierClientBase {
         return executionResult;
     }
 
-    private List<Callable<Optional<TaskResponseStat>>> getPOSTRequests(String targetUrl,
-                                                                       String[] requestBody) {
+    private List<Callable<Optional<TaskResponseStat>>> assembleTasksForPOSTRequests(String targetUrl,
+                                                                                    String[] requestBody) {
         // Setup the tasks.
         List<Callable<Optional<TaskResponseStat>>> tasks = new ArrayList<>();
         tasks.add(() -> {
             long startTime = System.currentTimeMillis();
-            boolean executionResult = sendSerialPOSTRequests(targetUrl, requestBody);
+            boolean executionResult = sendSerialPOSTRequestsInThread(targetUrl, requestBody);
             long endTime = System.currentTimeMillis();
 
             return Optional.of(toTaskResponseStat(startTime, endTime, executionResult));
@@ -316,12 +323,12 @@ public abstract class SkierClientBase {
         return tasks;
     }
 
-    private List<Callable<Optional<TaskResponseStat>>> getGETRequests(String[] targetUrls) {
+    private List<Callable<Optional<TaskResponseStat>>> assembleTasksForGETRequests(String[] targetUrls) {
         // Setup the tasks.
         List<Callable<Optional<TaskResponseStat>>> tasks = new ArrayList<>();
         tasks.add(() -> {
             long startTime = System.currentTimeMillis();
-            boolean executionResult = sendSerialGETRequests(targetUrls);
+            boolean executionResult = sendSerialGETRequestsInThread(targetUrls);
             long endTime = System.currentTimeMillis();
 
             return Optional.of(toTaskResponseStat(startTime, endTime, executionResult));
@@ -330,11 +337,11 @@ public abstract class SkierClientBase {
         return tasks;
     }
 
-    private void processResponses(List<Future<Optional<TaskResponseStat>>> responses,
-                                  boolean isPhaseOne,
-                                  boolean isPhaseTwo,
-                                  int targetRequestCountPerThread,
-                                  int targetThreadCount) throws ExecutionException, InterruptedException {
+    private void processResponsesInThread(List<Future<Optional<TaskResponseStat>>> responses,
+                                          boolean isPhaseOne,
+                                          boolean isPhaseTwo,
+                                          int targetRequestCountPerThread,
+                                          int targetThreadCount) throws ExecutionException, InterruptedException {
         // Waiting for all requests to be completed.
         while (!responses.stream().allMatch(stat -> stat.isDone())) {
             System.out.println("Waiting for all requests to complete...");
@@ -369,9 +376,8 @@ public abstract class SkierClientBase {
             try {
                 Optional<TaskResponseStat> statHolder = response.get();
                 if (statHolder.isPresent()) {
-                    TaskResponseStat stat = statHolder.get();
-                    long timeTaken = stat.getEndTime() - stat.getStartTime();
-
+//                    TaskResponseStat stat = statHolder.get();
+//                    long timeTaken = stat.getEndTime() - stat.getStartTime();
 //                    System.out.printf("Response in thread %s took %d milliseconds in total, and has %s error\n",
 //                            stat.getThreadId(),
 //                            timeTaken,
@@ -472,9 +478,9 @@ public abstract class SkierClientBase {
         return lifts;
     }
 
-    private String[] preparePOSTRequestsForThread(int targetRequestCount,
-                                                  int[] skierSplit,
-                                                  int[] timeSlides) throws JsonProcessingException {
+    private String[] preparePOSTRequestBody(int targetRequestCount,
+                                            int[] skierSplit,
+                                            int[] timeSlides) throws JsonProcessingException {
         String[] requestBody = new String[targetRequestCount];
 
         // Shuffle the inputs.
@@ -511,8 +517,8 @@ public abstract class SkierClientBase {
         return requestBody;
     }
 
-    private String[] prepareGETRequestsForThread(int targetRequestCount,
-                                                 int[] skierSplit) {
+    private String[] prepareGETRequestURL(int targetRequestCount,
+                                          int[] skierSplit) {
         String[] requests = new String[targetRequestCount];
 
         // Shuffle the inputs.
@@ -526,7 +532,10 @@ public abstract class SkierClientBase {
             }
 
             StringBuilder targetUrl = new StringBuilder();
-            targetUrl.append("http://ec2-54-92-222-44.compute-1.amazonaws.com:8080/IntelliJ_war/skiers/");
+            targetUrl.append(this.serverAddr);
+            targetUrl.append(":");
+            targetUrl.append(this.serverPort);
+            targetUrl.append("/IntelliJ_war/skiers/");  // API path for GET.
             targetUrl.append(this.resortName);
             targetUrl.append("/days/");
             targetUrl.append(this.skiDayNum);
@@ -554,11 +563,12 @@ public abstract class SkierClientBase {
         }
     }
 
-    protected void updateStatCounts(int statusCode) {
+    protected void updateStatCounts(int statusCode, String targetUrl) {
         if (statusCode == 200 || statusCode == 201) {
             this.successfulRequestCount++;
         } else {
             this.failedRequestCount++;
+            this.logger.error("Detected failed request toward " + targetUrl);
         }
     }
 }
