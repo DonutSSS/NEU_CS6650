@@ -5,9 +5,9 @@ import lombok.Data;
 
 @Data
 @Builder
-public class ResponseStat {
-    private final long requestStartTime;
-    private final long responseEndTime;
+public class TaskResponseStat {
+    private final long startTime;
+    private final long endTime;
     private final long threadId;
     private final boolean encounteredError;
 }

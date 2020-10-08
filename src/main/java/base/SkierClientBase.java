@@ -4,7 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
 import model.RequestBody;
-import model.ResponseStat;
+import model.TaskResponseStat;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpMethod;
 import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
@@ -20,23 +20,26 @@ import java.util.stream.Collectors;
 public abstract class SkierClientBase {
     private static final int skiDayLenInMin = 420;
 
+    private final static CountDownLatch shouldStartPhaseTwo = new CountDownLatch(1);
+    private final static CountDownLatch shouldStartPhaseThree = new CountDownLatch(1);
+
     private final MultiThreadedHttpConnectionManager connectionManager;
-    private final HttpClient client;
+    protected final HttpClient client;
     private final ObjectMapper mapper;
     private final String serverIp;
     private final int serverPort;
 
     // Fields with default values.
-    private int maxThreadCount = 8;
-    private int skierCount = 50;
-    private int skiLiftCount = 4;
+    private int maxThreadCount = 256;
+    private int skierCount = 50000;
+    private int skiLiftCount = 40;
     private int skiDayNum = 1;
     private String resortName = "SilverMt";
 
     private final int[] skiLifts;
 
-    private int successfulRequestCount;
-    private int failedRequestCount;
+    protected int successfulRequestCount;
+    protected int failedRequestCount;
 
     public SkierClientBase(final String serverIp,
                            int serverPort,
@@ -64,26 +67,6 @@ public abstract class SkierClientBase {
         this.failedRequestCount = 0;
     }
 
-//    public void processConcurrentPOSTRequests(String targetUrl,
-//                                              int targetThreadCount,
-//                                              String[] bodyJsonStr) {
-//        System.out.printf("Run multi-threaded POST calls toward %s\n", targetUrl);
-//
-//        // Setup the ExecutorService (hence threads pool).
-//        ExecutorService executorService = Executors.newFixedThreadPool(targetThreadCount);
-//
-//        // Initiate the requests.
-//        List<Future<Optional<ResponseStat>>> responses = getPOSTRequests(targetUrl,
-//                executorService,
-//                bodyJsonStr);
-//
-//        // Process the responses.
-//        processResponses(responses);
-//
-//        // Close out ExecutorService.
-//        executorService.shutdown();
-//    }
-
     public boolean executeSingleGetRequest(String targetUrl) {
         HttpMethod httpGet = new GetMethod(targetUrl);
 
@@ -95,10 +78,10 @@ public abstract class SkierClientBase {
             String responseBody = httpGet.getResponseBodyAsString();
 
             // Deal with the response.
-            System.out.printf("Retrieved response is: %s, with code %d, thread id is: %s\n\n",
-                    responseBody,
-                    statusCode,
-                    Thread.currentThread().getId());
+//            System.out.printf("Retrieved response is: %s, with code %d, thread id is: %s\n\n",
+//                    responseBody,
+//                    statusCode,
+//                    Thread.currentThread().getId());
 
             updateStatCounts(statusCode);
         } catch (IOException e) {
@@ -126,10 +109,10 @@ public abstract class SkierClientBase {
             String responseBody = httpPost.getResponseBodyAsString();
 
             // Deal with the response.
-            System.out.printf("Retrieved response is: %s, with code %d, thread id is: %s\n\n",
-                    responseBody,
-                    statusCode,
-                    Thread.currentThread().getId());
+//            System.out.printf("Retrieved response is: %s, with code %d, thread id is: %s\n\n",
+//                    responseBody,
+//                    statusCode,
+//                    Thread.currentThread().getId());
 
             updateStatCounts(statusCode);
         } catch (IOException e) {
@@ -143,12 +126,43 @@ public abstract class SkierClientBase {
     }
 
     public void startLoadSimulation() throws JsonProcessingException, InterruptedException, ExecutionException {
-        System.out.printf("Start skier client load simulation\n");
+        System.out.printf("Start skier client load simulator\n");
 
         long startTime = System.currentTimeMillis();
-        executePhaseOne();
+
+        Thread phaseOne = new Thread(() -> {
+            try {
+                executePhaseOne();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        Thread phaseTwo = new Thread(() -> {
+            try {
+                executePhaseTwo();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        Thread phaseThree = new Thread(() -> {
+            try {
+                executePhaseThree();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+
+        phaseOne.start();
+        phaseTwo.start();
+        phaseThree.start();
+
+        phaseOne.join();
+        phaseTwo.join();
+        phaseThree.join();
+
         long endTime = System.currentTimeMillis();
 
+        // Output summaries.
         System.out.printf("\n[Execution Summary]\nSuccessful Requests: %d\nFailed Requests: %d\nWall Time: %d seconds\nThroughput: %d rps\n",
                 this.successfulRequestCount,
                 this.failedRequestCount,
@@ -156,7 +170,7 @@ public abstract class SkierClientBase {
                 (this.successfulRequestCount + this.failedRequestCount) / ((endTime - startTime) / 1000));
     }
 
-    private void executePhaseOne() throws JsonProcessingException, InterruptedException, ExecutionException {
+    protected void executePhaseOne() throws JsonProcessingException, InterruptedException, ExecutionException {
         // Setup requirements in phase 1.
         int targetThreadCount = this.maxThreadCount / 4;
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
@@ -166,6 +180,8 @@ public abstract class SkierClientBase {
     }
 
     private void executePhaseTwo() throws InterruptedException, ExecutionException, JsonProcessingException {
+        shouldStartPhaseTwo.await(1, TimeUnit.SECONDS);
+
         // Setup requirements in phase 2.
         int targetThreadCount = this.maxThreadCount;
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
@@ -175,6 +191,8 @@ public abstract class SkierClientBase {
     }
 
     private void executePhaseThree() throws InterruptedException, ExecutionException, JsonProcessingException {
+        shouldStartPhaseThree.await(1, TimeUnit.SECONDS);
+
         // Setup requirements in phase 3.
         int targetThreadCount = this.maxThreadCount / 4;
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
@@ -189,9 +207,9 @@ public abstract class SkierClientBase {
                               int[] timeSlides,
                               int targetPOSTRequestCount,
                               int targetGETRequestCount) throws InterruptedException, ExecutionException, JsonProcessingException {
-        System.out.printf("Execute phase %d\n", phaseNum);
+        System.out.printf("Executing phase %d\n", phaseNum);
 
-        // Setup the ExecutorService.
+        // Setup the ExecutorService for requests.
         ExecutorService executorService = Executors.newFixedThreadPool(targetThreadCount);
 
         // Send desired POST requests.
@@ -227,7 +245,7 @@ public abstract class SkierClientBase {
                            boolean isPhaseOne,
                            boolean isPhaseTwo) throws JsonProcessingException, InterruptedException, ExecutionException {
         // The finalized concurrent tasks list for POST requests.
-        List<Callable<Optional<ResponseStat>>> tasks = new ArrayList<>();
+        List<Callable<Optional<TaskResponseStat>>> tasks = new ArrayList<>();
 
         // Sending the POST requests in batch toward the threads pool.
         for (int i = 0; i < targetThreadCount; i++) {
@@ -247,7 +265,7 @@ public abstract class SkierClientBase {
         }
 
         // Now execute all the tasks concurrently.
-        List<Future<Optional<ResponseStat>>> responses = executorService.invokeAll(tasks);
+        List<Future<Optional<TaskResponseStat>>> responses = executorService.invokeAll(tasks);
 
         // Process the responses.
         if (isPhaseOne) {
@@ -264,7 +282,7 @@ public abstract class SkierClientBase {
         boolean executionResult = true;
 
         // Execute all tasks within a single Thread.
-        List<Callable<Optional<ResponseStat>>> tasks = new ArrayList<>();
+        List<Callable<Optional<TaskResponseStat>>> tasks = new ArrayList<>();
         for (int i = 0; i < requestBody.length; i++) {
             executionResult &= executeSinglePOSTRequest(targetUrl, requestBody[i]);
         }
@@ -283,79 +301,57 @@ public abstract class SkierClientBase {
         return executionResult;
     }
 
-    private List<Callable<Optional<ResponseStat>>> getPOSTRequests(String targetUrl,
-                                                                   String[] requestBody) {
+    private List<Callable<Optional<TaskResponseStat>>> getPOSTRequests(String targetUrl,
+                                                                       String[] requestBody) {
         // Setup the tasks.
-        List<Callable<Optional<ResponseStat>>> tasks = new ArrayList<>();
+        List<Callable<Optional<TaskResponseStat>>> tasks = new ArrayList<>();
         tasks.add(() -> {
             long startTime = System.currentTimeMillis();
             boolean executionResult = sendSerialPOSTRequests(targetUrl, requestBody);
             long endTime = System.currentTimeMillis();
 
-            ResponseStat.ResponseStatBuilder statBuilder = ResponseStat.builder()
-                    .requestStartTime(startTime)
-                    .responseEndTime(endTime)
-                    .threadId(Thread.currentThread().getId());
-            if (executionResult) {
-                statBuilder.encounteredError(false);
-            } else {
-                statBuilder.encounteredError(true);
-            }
-
-            return Optional.of(statBuilder.build());
+            return Optional.of(toTaskResponseStat(startTime, endTime, executionResult));
         });
 
         return tasks;
     }
 
-    private List<Callable<Optional<ResponseStat>>> getGETRequests(String[] targetUrls) {
+    private List<Callable<Optional<TaskResponseStat>>> getGETRequests(String[] targetUrls) {
         // Setup the tasks.
-        List<Callable<Optional<ResponseStat>>> tasks = new ArrayList<>();
+        List<Callable<Optional<TaskResponseStat>>> tasks = new ArrayList<>();
         tasks.add(() -> {
             long startTime = System.currentTimeMillis();
             boolean executionResult = sendSerialGETRequests(targetUrls);
             long endTime = System.currentTimeMillis();
 
-            ResponseStat.ResponseStatBuilder statBuilder = ResponseStat.builder()
-                    .requestStartTime(startTime)
-                    .responseEndTime(endTime)
-                    .threadId(Thread.currentThread().getId());
-            if (executionResult) {
-                statBuilder.encounteredError(false);
-            } else {
-                statBuilder.encounteredError(true);
-            }
-
-            return Optional.of(statBuilder.build());
+            return Optional.of(toTaskResponseStat(startTime, endTime, executionResult));
         });
 
         return tasks;
     }
 
-    private void processResponses(List<Future<Optional<ResponseStat>>> responses,
+    private void processResponses(List<Future<Optional<TaskResponseStat>>> responses,
                                   boolean isPhaseOne,
                                   boolean isPhaseTwo,
                                   int targetRequestCountPerThread,
-                                  int targetThreadCount) throws ExecutionException, InterruptedException, JsonProcessingException {
-        boolean isPhaseTwoExecuted = false, isPhaseThreeExecuted = false;
-
+                                  int targetThreadCount) throws ExecutionException, InterruptedException {
         // Waiting for all requests to be completed.
         while (!responses.stream().allMatch(stat -> stat.isDone())) {
             System.out.println("Waiting for all requests to complete...");
 
             // Check if at least 10% of the threads complete their works.
-            List<Future<Optional<ResponseStat>>> completedRequests = responses.stream()
+            List<Future<Optional<TaskResponseStat>>> completedRequests = responses.stream()
                     .filter(stat -> stat.isDone()).collect(Collectors.toList());
 
             // If so, execute the next phase.
             if (isPhaseOne || isPhaseTwo) {
                 if (getCompletedThreadCount(completedRequests, targetRequestCountPerThread) > (targetThreadCount / 10)) {
                     if (isPhaseOne) {
-                        isPhaseTwoExecuted = true;
-                        executePhaseTwo();
+                        System.out.println("Phase 1 reached at least 10% threads completion, notifying phase 2.");
+                        shouldStartPhaseTwo.countDown();
                     } else if (isPhaseTwo) {
-                        isPhaseThreeExecuted = true;
-                        executePhaseThree();
+                        System.out.println("Phase 2 reached at least 10% threads completion, notifying phase 3.");
+                        shouldStartPhaseThree.countDown();
                     }
                 }
             }
@@ -368,25 +364,18 @@ public abstract class SkierClientBase {
             }
         }
 
-        if (isPhaseOne && !isPhaseTwoExecuted) {
-            executePhaseTwo();
-        }
-        if (isPhaseTwo && !isPhaseThreeExecuted) {
-            executePhaseThree();
-        }
-
         // All requests should now be completed.
-        for (Future<Optional<ResponseStat>> response : responses) {
+        for (Future<Optional<TaskResponseStat>> response : responses) {
             try {
-                Optional<ResponseStat> statHolder = response.get();
+                Optional<TaskResponseStat> statHolder = response.get();
                 if (statHolder.isPresent()) {
-                    ResponseStat stat = statHolder.get();
-                    long timeTaken = stat.getResponseEndTime() - stat.getRequestStartTime();
+                    TaskResponseStat stat = statHolder.get();
+                    long timeTaken = stat.getEndTime() - stat.getStartTime();
 
-                    System.out.printf("Response in thread %s took %d milliseconds in total, and has %s error\n",
-                            stat.getThreadId(),
-                            timeTaken,
-                            (stat.isEncounteredError()) ? "encountered" : "no");
+//                    System.out.printf("Response in thread %s took %d milliseconds in total, and has %s error\n",
+//                            stat.getThreadId(),
+//                            timeTaken,
+//                            (stat.isEncounteredError()) ? "encountered" : "no");
                 } else {
                     System.out.printf("Encountered unexpected empty response\n");
                     continue;
@@ -398,12 +387,26 @@ public abstract class SkierClientBase {
         }
     }
 
-    private int getCompletedThreadCount(List<Future<Optional<ResponseStat>>> completedTasks, int targetRequestCountPerThread) throws ExecutionException, InterruptedException {
+    private TaskResponseStat toTaskResponseStat(long startTime, long endTime, boolean executionResult) {
+        TaskResponseStat.TaskResponseStatBuilder statBuilder = TaskResponseStat.builder()
+                .startTime(startTime)
+                .endTime(endTime)
+                .threadId(Thread.currentThread().getId());
+        if (executionResult) {
+            statBuilder.encounteredError(false);
+        } else {
+            statBuilder.encounteredError(true);
+        }
+
+        return statBuilder.build();
+    }
+
+    private int getCompletedThreadCount(List<Future<Optional<TaskResponseStat>>> completedTasks, int targetRequestCountPerThread) throws ExecutionException, InterruptedException {
         Map<Long, Integer> threadIdToCompletedRequestCount = new HashMap<>();
 
-        for (Future<Optional<ResponseStat>> task : completedTasks) {
+        for (Future<Optional<TaskResponseStat>> task : completedTasks) {
             if (task.get().isPresent()) {
-                ResponseStat stat = task.get().get();
+                TaskResponseStat stat = task.get().get();
 
                 Integer threadTaskCount = threadIdToCompletedRequestCount.computeIfAbsent(stat.getThreadId(), k -> Integer.valueOf(0));
                 threadIdToCompletedRequestCount.put(stat.getThreadId(), new Integer(threadTaskCount.intValue() + 1));
@@ -551,7 +554,7 @@ public abstract class SkierClientBase {
         }
     }
 
-    private void updateStatCounts(int statusCode) {
+    protected void updateStatCounts(int statusCode) {
         if (statusCode == 200 || statusCode == 201) {
             this.successfulRequestCount++;
         } else {
