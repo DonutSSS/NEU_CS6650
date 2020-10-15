@@ -148,7 +148,6 @@ public class SkierClientA1P2 extends SkierClientBase {
     public void calculateAndDisplayStats() {
         System.out.printf("\n[Enhanced Statistics]:\n");
 
-
         // Calculate statistics for GETs.
         final List<Double> getStats = new ArrayList<>();
         this.requestStats.stream().filter(stat -> stat.getRequestType().equals("GET"))

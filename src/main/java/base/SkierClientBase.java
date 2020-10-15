@@ -10,6 +10,7 @@ import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
+import org.apache.commons.httpclient.params.HttpConnectionManagerParams;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -72,6 +73,15 @@ public abstract class SkierClientBase {
 
         this.successfulRequestCount = 0;
         this.failedRequestCount = 0;
+
+        // Overriding the default HTTP connection pool thresholds as they are too low:
+        // https://hc.apache.org/httpclient-3.x/threading.html
+        // Each thread will have a dedicated slot reserved in the pool (for threads across all phases).
+        int desiredConcurrentConnectionsCount = this.maxThreadCount / 2 + this.maxThreadCount;
+        HttpConnectionManagerParams connectionManagerParams = this.client.getHttpConnectionManager().getParams();
+        connectionManagerParams.setMaxTotalConnections(desiredConcurrentConnectionsCount);
+        connectionManagerParams.setDefaultMaxConnectionsPerHost(desiredConcurrentConnectionsCount);
+        connectionManagerParams.setMaxConnectionsPerHost(this.client.getHostConfiguration(), desiredConcurrentConnectionsCount);
     }
 
     public boolean executeSingleGetRequest(String targetUrl) {
@@ -365,7 +375,7 @@ public abstract class SkierClientBase {
 
             // Then wait for all requests to complete before further processing the responses.
             try {
-                Thread.sleep(1000);
+                Thread.sleep(1);
             } catch (InterruptedException e) {
                 System.out.printf("Encountered error during wait sleep %s\n", e);
             }

@@ -1,0 +1,12 @@
+model/RequestBody.class
+clientAssignment1Part1/SkierClientAIP1.class
+model/TaskResponseStat$TaskResponseStatBuilder.class
+server/IkkyoneServlet.class
+model/RequestBody$RequestBodyBuilder.class
+model/TaskResponseStat.class
+model/RequestResponseStat.class
+utility/SkierCmdLineHelper$CommandLineArgs.class
+model/RequestResponseStat$RequestResponseStatBuilder.class
+base/SkierClientBase.class
+clientAssignment1Part2/SkierClientA1P2.class
+utility/SkierCmdLineHelper.class
