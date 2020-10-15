@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.csv.CsvGenerator;
 import com.fasterxml.jackson.dataformat.csv.CsvMapper;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 import model.RequestResponseStat;
+import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpMethod;
 import org.apache.commons.httpclient.methods.GetMethod;
 import org.apache.commons.httpclient.methods.PostMethod;
@@ -49,14 +50,14 @@ public class SkierClientA1P2 extends SkierClientBase {
     }
 
     @Override
-    public boolean executeSingleGetRequest(String targetUrl) {
+    public boolean executeSingleGetRequest(String targetUrl, HttpClient client) {
         HttpMethod httpGet = new GetMethod(targetUrl);
 
         try {
             long startTime = System.currentTimeMillis();
 
             // Execute HTTP GET request.
-            int statusCode = this.client.executeMethod(httpGet);
+            int statusCode = client.executeMethod(httpGet);
 
             // Get request statistics.
             long latency = System.currentTimeMillis() - startTime;
@@ -91,7 +92,7 @@ public class SkierClientA1P2 extends SkierClientBase {
     }
 
     @Override
-    public boolean executeSinglePOSTRequest(String targetUrl, String bodyJsonStr) {
+    public boolean executeSinglePOSTRequest(String targetUrl, String bodyJsonStr, HttpClient client) {
         PostMethod httpPost = new PostMethod(targetUrl);
 
         try {
@@ -102,7 +103,7 @@ public class SkierClientA1P2 extends SkierClientBase {
             httpPost.setRequestEntity(entity);
 
             // Execute HTTP POST request.
-            int statusCode = this.client.executeMethod(httpPost);
+            int statusCode = client.executeMethod(httpPost);
 
             // Get request statistics.
             long latency = System.currentTimeMillis() - startTime;
