@@ -26,8 +26,6 @@ public abstract class SkierClientBase {
     private final static CountDownLatch shouldStartPhaseTwo = new CountDownLatch(1);
     private final static CountDownLatch shouldStartPhaseThree = new CountDownLatch(1);
 
-    private final MultiThreadedHttpConnectionManager connectionManager;
-    protected final HttpClient client;
     private final ObjectMapper mapper;
     private final String serverAddr;
     private final String apiPath;
@@ -54,8 +52,6 @@ public abstract class SkierClientBase {
                            int skiLiftCount,
                            int skiDayNum,
                            final String resortName) {
-        this.connectionManager = new MultiThreadedHttpConnectionManager();
-        this.client = new HttpClient(connectionManager);
         this.mapper = new ObjectMapper();
         this.serverAddr = serverAddr;
         this.apiPath = apiPath;
@@ -84,12 +80,12 @@ public abstract class SkierClientBase {
         connectionManagerParams.setMaxConnectionsPerHost(this.client.getHostConfiguration(), desiredConcurrentConnectionsCount);
     }
 
-    public boolean executeSingleGetRequest(String targetUrl) {
+    public boolean executeSingleGetRequest(String targetUrl, HttpClient client) {
         HttpMethod httpGet = new GetMethod(targetUrl);
 
         try {
             // Execute HTTP GET request.
-            int statusCode = this.client.executeMethod(httpGet);
+            int statusCode = client.executeMethod(httpGet);
 
             // Get HTTP response.
             String responseBody = httpGet.getResponseBodyAsString();
@@ -111,7 +107,7 @@ public abstract class SkierClientBase {
         return true;
     }
 
-    public boolean executeSinglePOSTRequest(String targetUrl, String bodyJsonStr) {
+    public boolean executeSinglePOSTRequest(String targetUrl, String bodyJsonStr, HttpClient client) {
         PostMethod httpPost = new PostMethod(targetUrl);
 
         try {
@@ -120,7 +116,7 @@ public abstract class SkierClientBase {
             httpPost.setRequestEntity(entity);
 
             // Execute HTTP POST request.
-            int statusCode = this.client.executeMethod(httpPost);
+            int statusCode = client.executeMethod(httpPost);
 
             // Get HTTP response.
             String responseBody = httpPost.getResponseBodyAsString();
@@ -299,9 +295,10 @@ public abstract class SkierClientBase {
         boolean executionResult = true;
 
         // Execute all tasks within a single Thread.
+        HttpClient client = new HttpClient();
         List<Callable<Optional<TaskResponseStat>>> tasks = new ArrayList<>();
         for (int i = 0; i < requestBody.length; i++) {
-            executionResult &= executeSinglePOSTRequest(targetUrl, requestBody[i]);
+            executionResult &= executeSinglePOSTRequest(targetUrl, requestBody[i], client);
         }
 
         return executionResult;
@@ -311,8 +308,9 @@ public abstract class SkierClientBase {
         boolean executionResult = true;
 
         // Execute all tasks within a single Thread.
+        HttpClient client = new HttpClient();
         for (int i = 0; i < targetUrls.length; i++) {
-            executionResult &= executeSingleGetRequest(targetUrls[i]);
+            executionResult &= executeSingleGetRequest(targetUrls[i], client);
         }
 
         return executionResult;
