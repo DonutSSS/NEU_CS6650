@@ -156,8 +156,8 @@ public class SkierClientA1P2 extends SkierClientBase {
         DescriptiveStatistics getDS = prepareStat(getStats);
 
         System.out.printf("Mean response time for all GETs: %f ms\n", getDS.getMean());
-        System.out.printf("Median response time for all GETs: %f ms\n", getDS.getPercentile(0.5));
-        System.out.printf("P99 response time for all GETs: %f ms\n", getDS.getPercentile(0.99));
+        System.out.printf("Median response time for all GETs: %f ms\n", getDS.getPercentile(50));
+        System.out.printf("P99 response time for all GETs: %f ms\n", getDS.getPercentile(99));
         System.out.printf("Max response time for all GETs: %f ms\n", getDS.getMax());
 
         // Calculate statistics for POST.
@@ -168,8 +168,8 @@ public class SkierClientA1P2 extends SkierClientBase {
         DescriptiveStatistics postDS = prepareStat(postStats);
 
         System.out.printf("Mean response time for all POSTs: %f ms\n", postDS.getMean());
-        System.out.printf("Median response time for all POSTs: %f ms\n", postDS.getPercentile(0.5));
-        System.out.printf("P99 response time for all POSTs: %f ms\n", postDS.getPercentile(0.99));
+        System.out.printf("Median response time for all POSTs: %f ms\n", postDS.getPercentile(50));
+        System.out.printf("P99 response time for all POSTs: %f ms\n", postDS.getPercentile(99));
         System.out.printf("Max response time for all POSTs: %f ms\n", postDS.getMax());
     }
 
