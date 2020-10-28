@@ -193,7 +193,7 @@ public abstract class SkierClientBase {
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
         int[] timeSlides = getTimeSlides(1);
 
-        executePhase(1, targetThreadCount, skierSplits, timeSlides, 100, 5);
+        executePhase(1, targetThreadCount, skierSplits, timeSlides, 1000, 5);
     }
 
     private void executePhaseTwo() throws InterruptedException, ExecutionException, JsonProcessingException {
@@ -204,7 +204,7 @@ public abstract class SkierClientBase {
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
         int[] timeSlides = getTimeSlides(2);
 
-        executePhase(2, targetThreadCount, skierSplits, timeSlides, 100, 5);
+        executePhase(2, targetThreadCount, skierSplits, timeSlides, 1000, 5);
     }
 
     private void executePhaseThree() throws InterruptedException, ExecutionException, JsonProcessingException {
@@ -215,7 +215,7 @@ public abstract class SkierClientBase {
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
         int[] timeSlides = getTimeSlides(3);
 
-        executePhase(3, targetThreadCount, skierSplits, timeSlides, 100, 10);
+        executePhase(3, targetThreadCount, skierSplits, timeSlides, 1000, 10);
     }
 
     private void executePhase(int phaseNum,

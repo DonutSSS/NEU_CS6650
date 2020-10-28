@@ -32,7 +32,7 @@ public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
     private final static String itemTmpAttrOldUpdateTime = "OldUpdateTime";
     private final static ObjectMapper mapper = new ObjectMapper();
 
-    private final int maxRetries = 5;
+    private final int maxRetries = 7;
     private final long retryWaitTimeBaseMS = 100;
 
     protected void doPost(javax.servlet.http.HttpServletRequest request, javax.servlet.http.HttpServletResponse response) throws IOException {
