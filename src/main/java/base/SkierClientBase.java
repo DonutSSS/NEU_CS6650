@@ -2,7 +2,7 @@ package base;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import model.RequestBody;
+import model.SkierPOSTRequest;
 import model.TaskResponseStat;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpMethod;
@@ -511,7 +511,7 @@ public abstract class SkierClientBase {
                 k = 0;
             }
 
-            RequestBody body = RequestBody.builder()
+            SkierPOSTRequest body = SkierPOSTRequest.builder()
                     .resortID(this.resortName)
                     .dayID(this.skiDayNum)
                     .skierID(skierSplit[i++])
@@ -546,7 +546,7 @@ public abstract class SkierClientBase {
             targetUrl.append(":");
             targetUrl.append(this.serverPort);
             targetUrl.append("/IntelliJ_war/skiers/");  // API path for GET.
-            targetUrl.append(this.resortName);
+            targetUrl.append(preparePathParam(this.resortName));
             targetUrl.append("/days/");
             targetUrl.append(this.skiDayNum);
             targetUrl.append("/skiers/");
@@ -574,11 +574,15 @@ public abstract class SkierClientBase {
     }
 
     protected void updateStatCounts(int statusCode, String targetUrl) {
-        if (statusCode == 200 || statusCode == 201) {
+        if (statusCode == 200 || statusCode == 204) {
             this.successfulRequestCount++;
         } else {
             this.failedRequestCount++;
             this.logger.error("Detected failed request toward " + targetUrl);
         }
+    }
+
+    private String preparePathParam(String pathParam) {
+        return pathParam.replaceAll(" ", "%20");
     }
 }

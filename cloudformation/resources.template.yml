@@ -1,0 +1,148 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Resources:
+# DDB Resources.
+#  IkkyoneSkierDDBTable:
+#    Type: AWS::DynamoDB::Table
+#    Properties:
+#      TableName: "IkkyoneSkierTable"
+#      AttributeDefinitions:
+#        - AttributeName: "SkierID"
+#          AttributeType: "S"
+#        - AttributeName: "ResortID"
+#          AttributeType: "S"
+#      KeySchema:
+#        - AttributeName: "SkierID"
+#          KeyType: "HASH"
+#        - AttributeName: "ResortID"
+#          KeyType: "RANGE"
+#      BillingMode: "PAY_PER_REQUEST"
+  DDBAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+  DDBAccessPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      Roles:
+        - Ref: DDBAccessRole
+      PolicyName: DDBAccessPolicy
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "dynamodb:*"
+            Resource: "*"
+
+# EC2 Resources.
+  IkkyoneServerInstance01:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
+      InstanceType: "t2.micro"
+      KeyName: "cs6650-lab1-key-pair"
+      SubnetId: "subnet-06d7ab4b"
+      SecurityGroupIds:
+        - "sg-0c4db97b530d7d692"  # cs6650-lab1-sg
+      IamInstanceProfile: {Ref: ServerInstanceProfile}
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            - - "#!/bin/bash -xue\n"
+              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
+              - "--resource ServerInstanceProfile "
+              - "--configsets SetupTomcat "
+              - "--region us-east-1\n"
+#  IkkyoneServerInstance02:
+#    Type: AWS::EC2::Instance
+#    Properties:
+#      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
+#      InstanceType: "t2.micro"
+#      KeyName: "cs6650-lab1-key-pair"
+#      SubnetId: "subnet-06d7ab4b"
+#      SecurityGroupIds:
+#        - "sg-0c4db97b530d7d692"  # cs6650-lab1-sg
+#      IamInstanceProfile: {Ref: ServerInstanceProfile}
+#      UserData:
+#        Fn::Base64:
+#          Fn::Join:
+#            - ""
+#            - - "#!/bin/bash -xue\n"
+#              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
+#              - "--resource ServerInstanceProfile "
+#              - "--configsets SetupTomcat "
+#              - "--region us-east-1\n"
+  ServerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Metadata:
+      AWS::CloudFormation::Init:
+        configSets:
+          SetupTomcat:
+            - SetupTomcat
+        SetupTomcat: # Install and start Tomcat8 server on instance boot time.
+          commands:
+            01InstallJava8:
+              command: yes | sudo yum install java-1.8.0
+            02RemoveJava7:
+              command: yes | sudo yum remove java-1.7.0-openjdk
+            03InstallTomcat8:
+              command: yes | sudo yum install tomcat8 tomcat8-webapps
+            04StartTomcat8:
+              command: sudo service tomcat8 start
+    Properties:
+      Roles:
+        - {Ref: DDBAccessRole}
+  ServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SG for CS6650 server"
+      SecurityGroupIngress:
+        - {CidrIp: "0.0.0.0/0", IpProtocol: "tcp", FromPort: 8080, ToPort: 8080}
+        - {CidrIp: "0.0.0.0/0", IpProtocol: "tcp", FromPort: 22, ToPort: 22}
+
+# ELB Resources.
+#  IkkyoneNLB:
+#    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+#    Properties:
+#      IpAddressType: ipv4
+#      Scheme: internet-facing
+#      Subnets:
+#        - "subnet-06d7ab4b"
+#      Type: network
+#  NLBListener:
+#    Type: AWS::ElasticLoadBalancingV2::Listener
+#    Properties:
+#      DefaultActions:
+#        - {Type: forward, TargetGroupArn: {Ref: NLBTargetGroup}}
+#      LoadBalancerArn: {Ref: IkkyoneNLB}
+#      Port: 8080
+#      Protocol: TCP
+#  NLBTargetGroup:
+#    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+#    Properties:
+#      Port: 8080
+#      Protocol: TCP
+#      TargetType: instance
+#      Targets:
+#        - {Id: {Ref: IkkyoneServerInstance01}}
+#        - {Id: {Ref: IkkyoneServerInstance02}}
+#      VpcId: "vpc-63ea121e"   # Default VPC
+
+#  NLBSecurityGroup:
+#    Type: AWS::EC2::SecurityGroup
+#    Properties:
+#      VpcId: "vpc-63ea121e"   # Default VPC
+#      SecurityGroupIngress:
+#        - {CidrIp: "0.0.0.0/0", IpProtocol: "tcp", FromPort: 8080, ToPort: 8080}
+#      SecurityGroupEgress:
+#        - {CidrIp: "0.0.0.0/0", IpProtocol: "tcp", FromPort: 0, ToPort: 65535}
