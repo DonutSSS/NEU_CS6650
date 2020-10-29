@@ -16,9 +16,7 @@ Resources:
           KeyType: "HASH"
         - AttributeName: "ResortID"
           KeyType: "RANGE"
-      ProvisionedThroughput:
-        ReadCapacityUnits: 50
-        WriteCapacityUnits: 100
+      BillingMode: "PAY_PER_REQUEST"  # Ext, 3000RU / 5000WU for handling 512 max clients.
   DDBAccessRole:
     Type: AWS::IAM::Role
     Properties:
@@ -69,7 +67,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
-      InstanceType: "m5.2xlarge"
+      InstanceType: "t2.micro"
       KeyName: "cs6650-lab1-key-pair"
       SubnetId: "subnet-06d7ab4b"
       SecurityGroupIds:
@@ -88,7 +86,45 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
-      InstanceType: "m5.2xlarge"
+      InstanceType: "t2.micro"
+      KeyName: "cs6650-lab1-key-pair"
+      SubnetId: "subnet-06d7ab4b"
+      SecurityGroupIds:
+        - "sg-0c4db97b530d7d692"  # cs6650-lab1-sg
+      IamInstanceProfile: {Ref: ServerInstanceProfile}
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            - - "#!/bin/bash -xue\n"
+              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
+              - "--resource ServerInstanceProfile "
+              - "--configsets SetupTomcat "
+              - "--region us-east-1\n"
+  IkkyoneServerInstance04:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
+      InstanceType: "t2.micro"
+      KeyName: "cs6650-lab1-key-pair"
+      SubnetId: "subnet-06d7ab4b"
+      SecurityGroupIds:
+        - "sg-0c4db97b530d7d692"  # cs6650-lab1-sg
+      IamInstanceProfile: {Ref: ServerInstanceProfile}
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            - - "#!/bin/bash -xue\n"
+              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
+              - "--resource ServerInstanceProfile "
+              - "--configsets SetupTomcat "
+              - "--region us-east-1\n"
+  IkkyoneServerInstance05:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
+      InstanceType: "t2.micro"
       KeyName: "cs6650-lab1-key-pair"
       SubnetId: "subnet-06d7ab4b"
       SecurityGroupIds:
@@ -136,32 +172,34 @@ Resources:
         - {CidrIp: "0.0.0.0/0", IpProtocol: "tcp", FromPort: 22, ToPort: 22}
 
 # ELB Resources.
-#  IkkyoneNLB:
-#    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
-#    Properties:
-#      IpAddressType: ipv4
-#      Scheme: internet-facing
-#      Subnets:
-#        - "subnet-06d7ab4b"
-#      Type: network
-#  NLBListener:
-#    Type: AWS::ElasticLoadBalancingV2::Listener
-#    Properties:
-#      DefaultActions:
-#        - {Type: forward, TargetGroupArn: {Ref: NLBTargetGroup}}
-#      LoadBalancerArn: {Ref: IkkyoneNLB}
-#      Port: 8080
-#      Protocol: TCP
-#  NLBTargetGroup:
-#    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-#    Properties:
-#      Port: 8080
-#      Protocol: TCP
-#      TargetType: instance
-#      Targets:
-#        - {Id: {Ref: IkkyoneServerInstance01}}
-#        - {Id: {Ref: IkkyoneServerInstance02}}
-#      VpcId: "vpc-63ea121e"   # Default VPC
+  IkkyoneNLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Scheme: internet-facing
+      Subnets:
+        - "subnet-06d7ab4b"
+      Type: network
+  NLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - {Type: forward, TargetGroupArn: {Ref: NLBTargetGroup}}
+      LoadBalancerArn: {Ref: IkkyoneNLB}
+      Port: 8080
+      Protocol: TCP
+  NLBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Port: 8080
+      Protocol: TCP
+      TargetType: instance
+      Targets:
+        - {Id: {Ref: IkkyoneServerInstance01}}
+        - {Id: {Ref: IkkyoneServerInstance02}}
+        - {Id: {Ref: IkkyoneServerInstance03}}
+        - {Id: {Ref: IkkyoneServerInstance04}}
+      VpcId: "vpc-63ea121e"   # Default VPC
 
 #  NLBSecurityGroup:
 #    Type: AWS::EC2::SecurityGroup

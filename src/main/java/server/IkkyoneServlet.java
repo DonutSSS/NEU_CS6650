@@ -85,7 +85,7 @@ public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
                                 item,
                                 Optional.of(conditionExpression),
                                 logger)) {
-                            sleep(i);
+                            AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
                         } else {
                             processResult = true;
                             break;
@@ -118,7 +118,7 @@ public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
                                 attrNameAliases,
                                 attrValueAliases,
                                 logger)) {
-                            sleep(i);
+                            AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
                         } else {
                             processResult = true;
                             break;
@@ -302,13 +302,13 @@ public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
         return newItem;
     }
 
-    private void sleep(int sleepTimes) {
-        try {
-            Thread.sleep(retryWaitTimeBaseMS * 2 * sleepTimes);
-        } catch (InterruptedException e) {
-            logger.error("Failed to sleep during retries attempt.", e);
-        }
-    }
+//    private void sleepExponentially(int sleepTimes) {
+//        try {
+//            Thread.sleep(retryWaitTimeBaseMS * 2 * sleepTimes);
+//        } catch (InterruptedException e) {
+//            logger.error("Failed to sleepExponentially during retries attempt.", e);
+//        }
+//    }
 
     private boolean isValidRequest(javax.servlet.http.HttpServletRequest request,
                                    javax.servlet.http.HttpServletResponse response,

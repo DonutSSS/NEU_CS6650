@@ -12,14 +12,22 @@ import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.commons.httpclient.params.HttpConnectionManagerParams;
 import org.apache.log4j.Logger;
+import utility.AWSUtil;
 
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 public abstract class SkierClientBase {
     final Logger logger = Logger.getLogger(this.getClass());
+
+    protected final AtomicInteger totalRequestSent;
+    protected final AtomicInteger successfulRequestCount;
+    protected final AtomicInteger failedRequestCount;
+    protected final int maxRetries = 7;
+    protected final long retryWaitTimeBaseMS = 100;
 
     private static final int skiDayLenInMin = 420;
 
@@ -42,9 +50,6 @@ public abstract class SkierClientBase {
 
     private final int[] skiLifts;
     private final String targetUrl;
-
-    protected int successfulRequestCount;
-    protected int failedRequestCount;
 
     public SkierClientBase(final String serverAddr,
                            final String apiPath,
@@ -71,8 +76,9 @@ public abstract class SkierClientBase {
         this.skiLifts = getLiftRides();
         this.targetUrl = this.serverAddr + ":" + this.serverPort + this.apiPath;
 
-        this.successfulRequestCount = 0;
-        this.failedRequestCount = 0;
+        this.totalRequestSent = new AtomicInteger();
+        this.successfulRequestCount = new AtomicInteger();
+        this.failedRequestCount = new AtomicInteger();
 
         // Overriding the default HTTP connection pool thresholds as they are too low:
         // https://hc.apache.org/httpclient-3.x/threading.html
@@ -86,60 +92,82 @@ public abstract class SkierClientBase {
 
     public boolean executeSingleGetRequest(String targetUrl) {
         HttpMethod httpGet = new GetMethod(targetUrl);
+        int statusCode = -1;
 
-        try {
-            // Execute HTTP GET request.
-            int statusCode = this.client.executeMethod(httpGet);
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                // Execute HTTP GET request.
+                statusCode = this.client.executeMethod(httpGet);
 
-            // Get HTTP response.
-            String responseBody = httpGet.getResponseBodyAsString();
+                // Get HTTP response.
+//                String responseBody = httpGet.getResponseBodyAsString();
 
-            // Deal with the response.
+                // Deal with the response.
 //            System.out.printf("Retrieved response is: %s, with code %d, thread id is: %s\n\n",
 //                    responseBody,
 //                    statusCode,
 //                    Thread.currentThread().getId());
 
-            updateStatCounts(statusCode, targetUrl);
-        } catch (IOException e) {
-            System.out.printf("Failed to send GET request to %s, with error: %s\n\n", targetUrl, e);
-            return false;
-        } finally {
-            httpGet.releaseConnection();
+                if (statusCode == 200 || statusCode == 204) {
+                    updateStatCounts(statusCode, targetUrl);
+                    httpGet.releaseConnection();
+
+                    return true;
+                } else {
+                    System.out.printf("Got error response from server for GET request %s, will wait and retry.\n", targetUrl);
+                    AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
+                }
+            } catch (IOException e) {
+                System.out.printf("Failed to send GET request to %s, with error: %s\n\n", targetUrl, e);
+            }
         }
 
-        return true;
+        updateStatCounts(statusCode, targetUrl);
+        httpGet.releaseConnection();
+
+        return false;
     }
 
     public boolean executeSinglePOSTRequest(String targetUrl, String bodyJsonStr) {
         PostMethod httpPost = new PostMethod(targetUrl);
+        int statusCode = -1;
 
-        try {
-            // Set request body content.
-            StringRequestEntity entity = new StringRequestEntity(bodyJsonStr, "application/json", "UTF-8");
-            httpPost.setRequestEntity(entity);
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                // Set request body content.
+                StringRequestEntity entity = new StringRequestEntity(bodyJsonStr, "application/json", "UTF-8");
+                httpPost.setRequestEntity(entity);
 
-            // Execute HTTP POST request.
-            int statusCode = this.client.executeMethod(httpPost);
+                // Execute HTTP POST request.
+                statusCode = this.client.executeMethod(httpPost);
 
-            // Get HTTP response.
-            String responseBody = httpPost.getResponseBodyAsString();
+                // Get HTTP response.
+//                String responseBody = httpPost.getResponseBodyAsString();
 
-            // Deal with the response.
+                // Deal with the response.
 //            System.out.printf("Retrieved response is: %s, with code %d, thread id is: %s\n\n",
 //                    responseBody,
 //                    statusCode,
 //                    Thread.currentThread().getId());
 
-            updateStatCounts(statusCode, targetUrl);
-        } catch (IOException e) {
-            System.out.printf("Failed to send POST request to %s, with error: %s\n\n", targetUrl, e);
-            return false;
-        } finally {
-            httpPost.releaseConnection();
+                if (statusCode == 200 || statusCode == 204) {
+                    updateStatCounts(statusCode, targetUrl);
+                    httpPost.releaseConnection();
+
+                    return true;
+                } else {
+                    System.out.printf("Got error response from server for POST request %s, will wait and retry.\n", targetUrl);
+                    AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
+                }
+            } catch (IOException e) {
+                System.out.printf("Failed to send POST request to %s, with error: %s\n\n", targetUrl, e);
+            }
         }
 
-        return true;
+        updateStatCounts(statusCode, targetUrl);
+        httpPost.releaseConnection();
+
+        return false;
     }
 
     public void startLoadSimulation() throws JsonProcessingException, InterruptedException, ExecutionException {
@@ -180,11 +208,12 @@ public abstract class SkierClientBase {
         long endTime = System.currentTimeMillis();
 
         // Output summaries.
-        System.out.printf("\n[Execution Summary]\nSuccessful Requests: %d\nFailed Requests: %d\nWall Time: %d seconds\nThroughput: %d rps\n",
-                this.successfulRequestCount,
-                this.failedRequestCount,
+        System.out.printf("\n[Execution Summary]\nTotal Requests: %d\nSuccessful Requests: %d\nFailed Requests: %d\nWall Time: %d seconds\nThroughput: %d rps\n",
+                this.totalRequestSent.get(),
+                this.successfulRequestCount.get(),
+                this.failedRequestCount.get(),
                 (endTime - startTime) / 1000,
-                (this.successfulRequestCount + this.failedRequestCount) / ((endTime - startTime) / 1000));
+                (this.totalRequestSent.get()) / ((endTime - startTime) / 1000));
     }
 
     private void executePhaseOne() throws JsonProcessingException, InterruptedException, ExecutionException {
@@ -529,12 +558,10 @@ public abstract class SkierClientBase {
 
     private String[] prepareGETRequestURL(int targetRequestCount,
                                           int[] skierSplit) {
-        String[] requests = new String[targetRequestCount];
+        String[] requests = new String[targetRequestCount * 2];
 
-        // Shuffle the inputs.
+        // Generate GET requests for https://app.swaggerhub.com/apis/cloud-perf/SkiDataAPI/1.13#/skiers/getSkierDayVertical
         shuffleArray(skierSplit);
-
-        // Generate requests based on the shuffle inputs.
         int i = 0, j = 0;
         while (j < targetRequestCount) {
             if (i >= skierSplit.length) {
@@ -545,7 +572,7 @@ public abstract class SkierClientBase {
             targetUrl.append(this.serverAddr);
             targetUrl.append(":");
             targetUrl.append(this.serverPort);
-            targetUrl.append("/IntelliJ_war/skiers/");  // API path for GET.
+            targetUrl.append("/IntelliJ_war/skiers/");
             targetUrl.append(preparePathParam(this.resortName));
             targetUrl.append("/days/");
             targetUrl.append(this.skiDayNum);
@@ -556,6 +583,31 @@ public abstract class SkierClientBase {
 
             i++;
             j++;
+        }
+
+        // Generate GET requests for https://app.swaggerhub.com/apis/cloud-perf/SkiDataAPI/1.13#/skiers/getSkierResortTotals
+        shuffleArray(skierSplit);
+        i = 0;
+        int k = 0;
+        while (k < targetRequestCount) {
+            if (i >= skierSplit.length) {
+                i = 0;
+            }
+
+            StringBuilder targetUrl = new StringBuilder();
+            targetUrl.append(this.serverAddr);
+            targetUrl.append(":");
+            targetUrl.append(this.serverPort);
+            targetUrl.append("/IntelliJ_war/skiers/");
+            targetUrl.append(skierSplit[i]);
+            targetUrl.append("/vertical?resort=");
+            targetUrl.append(preparePathParam(this.resortName));
+
+            requests[j] = targetUrl.toString();
+
+            i++;
+            j++;
+            k++;
         }
 
         return requests;
@@ -574,10 +626,12 @@ public abstract class SkierClientBase {
     }
 
     protected void updateStatCounts(int statusCode, String targetUrl) {
+        this.totalRequestSent.addAndGet(1);
+
         if (statusCode == 200 || statusCode == 204) {
-            this.successfulRequestCount++;
+            this.successfulRequestCount.addAndGet(1);
         } else {
-            this.failedRequestCount++;
+            this.failedRequestCount.addAndGet(1);
             this.logger.error("Detected failed request toward " + targetUrl);
         }
     }
@@ -585,4 +639,12 @@ public abstract class SkierClientBase {
     private String preparePathParam(String pathParam) {
         return pathParam.replaceAll(" ", "%20");
     }
+
+//    private void sleepExponentially(int sleepTimes) {
+//        try {
+//            Thread.sleep(retryWaitTimeBaseMS * 2 * sleepTimes);
+//        } catch (InterruptedException e) {
+//            logger.error("Failed to sleep during retries attempt.", e);
+//        }
+//    }
 }

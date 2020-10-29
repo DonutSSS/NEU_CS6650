@@ -13,6 +13,7 @@ import org.apache.commons.httpclient.methods.PostMethod;
 import org.apache.commons.httpclient.methods.StringRequestEntity;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.kohsuke.args4j.CmdLineException;
+import utility.AWSUtil;
 import utility.SkierCmdLineHelper;
 
 import java.io.*;
@@ -51,89 +52,122 @@ public class SkierClientA1P2 extends SkierClientBase {
     @Override
     public boolean executeSingleGetRequest(String targetUrl) {
         HttpMethod httpGet = new GetMethod(targetUrl);
+        int statusCode = -1;
 
-        try {
-            long startTime = System.currentTimeMillis();
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                long startTime = System.currentTimeMillis();
 
-            // Execute HTTP GET request.
-            int statusCode = this.client.executeMethod(httpGet);
+                // Execute HTTP GET request.
+                statusCode = this.client.executeMethod(httpGet);
 
-            // Get request statistics.
-            long latency = System.currentTimeMillis() - startTime;
-            RequestResponseStat stat = RequestResponseStat.builder()
-                    .startTime(startTime)
-                    .latency(latency)
-                    .responseCode(statusCode)
-                    .requestType("GET")
-                    .build();
+                // Get request statistics.
+                long latency = System.currentTimeMillis() - startTime;
 
-            // Save request statistics.
-            requestStats.offer(stat);
+                RequestResponseStat stat;
+                if (targetUrl.contains("vertical")) {
+                    stat = RequestResponseStat.builder()
+                            .startTime(startTime)
+                            .latency(latency)
+                            .responseCode(statusCode)
+                            .requestType("GET-SkierResortTotals")
+                            .build();
+                } else {
+                    stat = RequestResponseStat.builder()
+                            .startTime(startTime)
+                            .latency(latency)
+                            .responseCode(statusCode)
+                            .requestType("GET-SkierDayVertical")
+                            .build();
+                }
 
-            // Get HTTP response.
-            String responseBody = httpGet.getResponseBodyAsString();
+                // Save request statistics.
+                requestStats.offer(stat);
 
-            // Deal with the response.
+                // Get HTTP response.
+//                String responseBody = httpGet.getResponseBodyAsString();
+
+                // Deal with the response.
 //            System.out.printf("Retrieved response is: %s, with code %d, thread id is: %s\n\n",
 //                    responseBody,
 //                    statusCode,
 //                    Thread.currentThread().getId());
 
-            updateStatCounts(statusCode, targetUrl);
-        } catch (IOException e) {
-            System.out.printf("Failed to send GET request to %s, with error: %s\n\n", targetUrl, e);
-            return false;
-        } finally {
-            httpGet.releaseConnection();
+                if (statusCode == 200 || statusCode == 204) {
+                    updateStatCounts(statusCode, targetUrl);
+                    httpGet.releaseConnection();
+
+                    return true;
+                } else {
+                    System.out.printf("Got error response from server for GET request %s, will wait and retry.\n", targetUrl);
+                    AWSUtil.sleepExponentially(i, retryWaitTimeBaseMS);
+                }
+            } catch (IOException e) {
+                System.out.printf("Failed to send GET request to %s, with error: %s\n\n", targetUrl, e);
+            }
         }
 
-        return true;
+        updateStatCounts(statusCode, targetUrl);
+        httpGet.releaseConnection();
+
+        return false;
     }
 
     @Override
     public boolean executeSinglePOSTRequest(String targetUrl, String bodyJsonStr) {
         PostMethod httpPost = new PostMethod(targetUrl);
+        int statusCode = -1;
 
-        try {
-            long startTime = System.currentTimeMillis();
+        for (int i = 0; i < maxRetries; i++) {
+            try {
+                long startTime = System.currentTimeMillis();
 
-            // Set request body content.
-            StringRequestEntity entity = new StringRequestEntity(bodyJsonStr, "application/json", "UTF-8");
-            httpPost.setRequestEntity(entity);
+                // Set request body content.
+                StringRequestEntity entity = new StringRequestEntity(bodyJsonStr, "application/json", "UTF-8");
+                httpPost.setRequestEntity(entity);
 
-            // Execute HTTP POST request.
-            int statusCode = this.client.executeMethod(httpPost);
+                // Execute HTTP POST request.
+                statusCode = this.client.executeMethod(httpPost);
 
-            // Get request statistics.
-            long latency = System.currentTimeMillis() - startTime;
-            RequestResponseStat stat = RequestResponseStat.builder()
-                    .startTime(startTime)
-                    .latency(latency)
-                    .responseCode(statusCode)
-                    .requestType("POST")
-                    .build();
+                // Get request statistics.
+                long latency = System.currentTimeMillis() - startTime;
+                RequestResponseStat stat = RequestResponseStat.builder()
+                        .startTime(startTime)
+                        .latency(latency)
+                        .responseCode(statusCode)
+                        .requestType("POST")
+                        .build();
 
-            // Save request statistics.
-            requestStats.offer(stat);
+                // Save request statistics.
+                requestStats.offer(stat);
 
-            // Get HTTP response.
-            String responseBody = httpPost.getResponseBodyAsString();
+                // Get HTTP response.
+//                String responseBody = httpPost.getResponseBodyAsString();
 
-            // Deal with the response.
+                // Deal with the response.
 //            System.out.printf("Retrieved response is: %s, with code %d, thread id is: %s\n\n",
 //                    responseBody,
 //                    statusCode,
 //                    Thread.currentThread().getId());
 
-            updateStatCounts(statusCode, targetUrl);
-        } catch (IOException e) {
-            System.out.printf("Failed to send POST request to %s, with error: %s\n\n", targetUrl, e);
-            return false;
-        } finally {
-            httpPost.releaseConnection();
+                if (statusCode == 200 || statusCode == 204) {
+                    updateStatCounts(statusCode, targetUrl);
+                    httpPost.releaseConnection();
+
+                    return true;
+                } else {
+                    System.out.printf("Got error response from server for POST request %s, will wait and retry.\n", targetUrl);
+                    AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
+                }
+            } catch (IOException e) {
+                System.out.printf("Failed to send POST request to %s, with error: %s\n\n", targetUrl, e);
+            }
         }
 
-        return true;
+        updateStatCounts(statusCode, targetUrl);
+        httpPost.releaseConnection();
+
+        return false;
     }
 
     @Override
@@ -149,16 +183,27 @@ public class SkierClientA1P2 extends SkierClientBase {
         System.out.printf("\n[Enhanced Statistics]:\n");
 
         // Calculate statistics for GETs.
-        final List<Double> getStats = new ArrayList<>();
-        this.requestStats.stream().filter(stat -> stat.getRequestType().equals("GET"))
-                .forEach(stat -> getStats.add(Double.parseDouble(Long.toString(stat.getLatency()))));
+        final List<Double> get1Stats = new ArrayList<>();
+        this.requestStats.stream().filter(stat -> stat.getRequestType().equals("GET-SkierResortTotals"))
+                .forEach(stat -> get1Stats.add(Double.parseDouble(Long.toString(stat.getLatency()))));
 
-        DescriptiveStatistics getDS = prepareStat(getStats);
+        DescriptiveStatistics get1DS = prepareStat(get1Stats);
 
-        System.out.printf("Mean response time for all GETs: %f ms\n", getDS.getMean());
-        System.out.printf("Median response time for all GETs: %f ms\n", getDS.getPercentile(50));
-        System.out.printf("P99 response time for all GETs: %f ms\n", getDS.getPercentile(99));
-        System.out.printf("Max response time for all GETs: %f ms\n", getDS.getMax());
+        System.out.printf("Mean response time for all GETs-SkierResortTotals: %f ms\n", get1DS.getMean());
+        System.out.printf("Median response time for all GETs-SkierResortTotals: %f ms\n", get1DS.getPercentile(50));
+        System.out.printf("P99 response time for all GETs-SkierResortTotals: %f ms\n", get1DS.getPercentile(99));
+        System.out.printf("Max response time for all GETs-SkierResortTotals: %f ms\n", get1DS.getMax());
+
+        final List<Double> get2Stats = new ArrayList<>();
+        this.requestStats.stream().filter(stat -> stat.getRequestType().equals("GET-SkierDayVertical"))
+                .forEach(stat -> get2Stats.add(Double.parseDouble(Long.toString(stat.getLatency()))));
+
+        DescriptiveStatistics get2DS = prepareStat(get2Stats);
+
+        System.out.printf("Mean response time for all GETs-SkierDayVertical: %f ms\n", get2DS.getMean());
+        System.out.printf("Median response time for all GETs-SkierDayVertical: %f ms\n", get2DS.getPercentile(50));
+        System.out.printf("P99 response time for all GETs-SkierDayVertical: %f ms\n", get2DS.getPercentile(99));
+        System.out.printf("Max response time for all GETs-SkierDayVertical: %f ms\n", get2DS.getMax());
 
         // Calculate statistics for POST.
         final List<Double> postStats = new ArrayList<>();

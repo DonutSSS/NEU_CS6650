@@ -6,7 +6,7 @@ import org.kohsuke.args4j.Option;
 import org.kohsuke.args4j.ParserProperties;
 
 public class SkierCmdLineHelper {
-    public static final String defaultServerAddr = "http://ec2-54-234-97-135.compute-1.amazonaws.com";
+    public static final String defaultServerAddr = "http://ec2-54-145-31-74.compute-1.amazonaws.com";
     public static final String defaultAPIPath = "/IntelliJ_war/skiers/liftrides";
     public static int defaultServerPort = 8080;
     public static int defaultMaxThreadCount = 4;

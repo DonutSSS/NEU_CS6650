@@ -3,6 +3,8 @@ package utility;
 import lombok.NonNull;
 import org.apache.log4j.Logger;
 import server.IkkyoneServlet;
+import software.amazon.awssdk.http.SdkHttpClient;
+import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
 
@@ -13,7 +15,12 @@ import java.util.Optional;
 public class AWSUtil {
 //    private final static Logger logger = Logger.getLogger(IkkyoneServlet.class);
 
-    private final static DynamoDbClient dynamoDbClient = DynamoDbClient.create();
+    private final static SdkHttpClient sdkHttpClient = ApacheHttpClient.builder()
+            .maxConnections(800)
+            .build();
+    private final static DynamoDbClient dynamoDbClient = DynamoDbClient.builder()
+            .httpClient(sdkHttpClient)
+            .build();
 
     public static boolean putItemDDB(@NonNull final String ddbTableName,
                                      @NonNull final Map<String, AttributeValue> item,
@@ -102,5 +109,13 @@ public class AWSUtil {
         }
 
         return null;
+    }
+
+    public static void sleepExponentially(int sleepTimes, long retryWaitTimeBaseMS) {
+        try {
+            Thread.sleep(retryWaitTimeBaseMS * 2 * sleepTimes);
+        } catch (InterruptedException e) {
+            return;
+        }
     }
 }
