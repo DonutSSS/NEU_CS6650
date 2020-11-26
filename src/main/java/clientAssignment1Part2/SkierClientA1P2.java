@@ -51,10 +51,12 @@ public class SkierClientA1P2 extends SkierClientBase {
 
     @Override
     public boolean executeSingleGetRequest(String targetUrl) {
-        HttpMethod httpGet = new GetMethod(targetUrl);
         int statusCode = -1;
+        RequestResponseStat stat = null;
 
         for (int i = 0; i < maxRetries; i++) {
+            HttpMethod httpGet = new GetMethod(targetUrl);
+
             try {
                 long startTime = System.currentTimeMillis();
 
@@ -64,7 +66,6 @@ public class SkierClientA1P2 extends SkierClientBase {
                 // Get request statistics.
                 long latency = System.currentTimeMillis() - startTime;
 
-                RequestResponseStat stat;
                 if (targetUrl.contains("vertical")) {
                     stat = RequestResponseStat.builder()
                             .startTime(startTime)
@@ -81,9 +82,6 @@ public class SkierClientA1P2 extends SkierClientBase {
                             .build();
                 }
 
-                // Save request statistics.
-                requestStats.offer(stat);
-
                 // Get HTTP response.
 //                String responseBody = httpGet.getResponseBodyAsString();
 
@@ -94,21 +92,29 @@ public class SkierClientA1P2 extends SkierClientBase {
 //                    Thread.currentThread().getId());
 
                 if (statusCode == 200 || statusCode == 204) {
+                    // Save request statistics.
+                    requestStats.offer(stat);
+
                     updateStatCounts(statusCode, targetUrl);
-                    httpGet.releaseConnection();
 
                     return true;
                 } else {
-                    System.out.printf("Got error response from server for GET request %s, will wait and retry.\n", targetUrl);
+//                    System.out.printf("Got error response from server for GET request %s, will wait and retry.\n", targetUrl);
                     AWSUtil.sleepExponentially(i, retryWaitTimeBaseMS);
                 }
             } catch (IOException e) {
                 System.out.printf("Failed to send GET request to %s, with error: %s\n\n", targetUrl, e);
+            } finally {
+                httpGet.releaseConnection();
             }
         }
 
+        // Save request statistics.
+        if (stat != null) {
+            requestStats.offer(stat);
+        }
+
         updateStatCounts(statusCode, targetUrl);
-        httpGet.releaseConnection();
 
         return false;
     }
@@ -156,7 +162,7 @@ public class SkierClientA1P2 extends SkierClientBase {
 
                     return true;
                 } else {
-                    System.out.printf("Got error response from server for POST request %s, will wait and retry.\n", targetUrl);
+//                    System.out.printf("Got error response from server for POST request %s, will wait and retry.\n", targetUrl);
                     AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
                 }
             } catch (IOException e) {

@@ -1,5 +1,6 @@
 package server;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
@@ -21,19 +22,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
     private final static Logger logger = Logger.getLogger(IkkyoneServlet.class);
 
-    private final static String ddbTableName = "IkkyoneSkierTable";
-    private final static String itemPrimaryHashKey = "SkierID";
-    private final static String itemPrimarySortKey = "ResortID";
-    private final static String itemAttrDailyTotalVerticals = "DailyTotalVerticals";
-    private final static String itemAttrLiftTimes = "LiftTimes";
-    private final static String itemAttrLiftIDs = "LiftIDs";
-    private final static String itemAttrLiftDays = "LiftDays";
-    private final static String itemAttrLastUpdateTime = "LastUpdateTime";
-    private final static String itemTmpAttrOldUpdateTime = "OldUpdateTime";
-    private final static ObjectMapper mapper = new ObjectMapper();
+//    public final static String sqsQueueName = "IkkyonePOSTQueue.fifo";
+public final static String sqsQueueName = "IkkyonePOSTQueue";
+    public final static String ddbTableName = "IkkyoneSkierTable";
+    public final static String itemPrimaryHashKey = "SkierID";
+    public final static String itemPrimarySortKey = "ResortID";
+    public final static String itemAttrDailyTotalVerticals = "DailyTotalVerticals";
 
-    private final int maxRetries = 7;
-    private final long retryWaitTimeBaseMS = 100;
+    private final static ObjectMapper mapper = new ObjectMapper();
 
     protected void doPost(javax.servlet.http.HttpServletRequest request, javax.servlet.http.HttpServletResponse response) throws IOException {
         // Prepare response data.
@@ -61,70 +57,8 @@ public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
                     return;
                 }
 
-                final String itemPrimaryHashKeyVal = Integer.toString(skierRequest.getSkierID());
-                final String itemPrimarySortKeyVal = skierRequest.getResortID();
-                Long[] oldUpdateTimeHolder = new Long[1];
-                Boolean[] itemExistCheckerHolder = new Boolean[1];
-
-                // Perform exponential retries in case of race condition.
-                for (int i = 0; i < maxRetries; i++) {
-                    // Read from DDB to check if item exists.
-                    Map<String, AttributeValue> item = prepareDDBItem(itemPrimaryHashKeyVal,
-                            itemPrimarySortKeyVal,
-                            skierRequest,
-                            oldUpdateTimeHolder,
-                            itemExistCheckerHolder);
-
-                    // Update the item in DB accordingly.
-                    if (itemExistCheckerHolder[0] == false) {       // Item doesn't exist.
-                        // To prevent concurrent modification;
-                        String conditionExpression = "attribute_not_exists(" + itemAttrLastUpdateTime + ")";
-
-                        // Perform exponential backoff in retries.
-                        if (!AWSUtil.putItemDDB(ddbTableName,
-                                item,
-                                Optional.of(conditionExpression),
-                                logger)) {
-                            AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
-                        } else {
-                            processResult = true;
-                            break;
-                        }
-                    } else {                                        // Item exists.
-                        // Build update expression.
-                        Map<String, String> attrNameAliases = new HashMap<>();
-                        item.forEach((k, v) -> attrNameAliases.put("#" + k, k));
-                        Map<String, AttributeValue> attrValueAliases = new HashMap<>();
-                        item.forEach((k, v) -> attrValueAliases.put(":" + k, v));
-
-                        StringBuilder builder = new StringBuilder();
-                        builder.append("SET ");
-                        item.forEach((k, v) -> builder.append("#" + k + " = :" + k + ", "));
-                        String updateExpression = builder.toString();
-
-                        // Build condition expression.
-                        String conditionExpression = "#" + itemAttrLastUpdateTime
-                                + " = :" + itemTmpAttrOldUpdateTime;
-                        attrValueAliases.put(":" + itemTmpAttrOldUpdateTime,
-                                AttributeValue.builder().n(Long.toString(oldUpdateTimeHolder[0])).build());
-
-                        if (!AWSUtil.updateItemDDB(ddbTableName,
-                                itemPrimaryHashKey,
-                                itemPrimaryHashKeyVal,
-                                itemPrimarySortKey,
-                                itemPrimarySortKeyVal,
-                                updateExpression.substring(0, updateExpression.length() - 2),
-                                Optional.of(conditionExpression),
-                                attrNameAliases,
-                                attrValueAliases,
-                                logger)) {
-                            AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
-                        } else {
-                            processResult = true;
-                            break;
-                        }
-                    }
-                }
+//                processResult = writeToDDB(skierRequest);
+                processResult = publishToSQS(skierRequest);
             }
         }
 
@@ -194,6 +128,18 @@ public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
         }
     }
 
+    private boolean publishToSQS(@NonNull final SkierPOSTRequest skierRequest) {
+        try {
+            String sqsMessageBody = mapper.writeValueAsString(skierRequest);
+
+            AWSUtil.sendMsgToSQS(sqsQueueName, sqsMessageBody);
+
+            return true;
+        } catch (JsonProcessingException e) {
+            throw new IllegalArgumentException(String.format("Failed to write POST request to sqs str: %s", skierRequest));
+        }
+    }
+
     private void getVerticalAtResort(@NonNull final String itemPrimaryHashKeyVal,
                                         @NonNull final String itemPrimarySortKeyVal,
                                         @NonNull final Integer[] outcomeVerticalHolder) {
@@ -231,75 +177,6 @@ public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
                 outcomeVerticalHolder[0] = Integer.parseInt(dailyVerticals.get(dayID).n());
             }
         }
-    }
-
-    Map<String, AttributeValue> prepareDDBItem(@NonNull final String itemPrimaryHashKeyVal,
-                                               @NonNull final String itemPrimarySortKeyVal,
-                                               @NonNull final SkierPOSTRequest skierRequest,
-                                               @NonNull final Long[] oldUpdateTimeHolder,
-                                               @NonNull final Boolean[] itemExistCheckerHolder) {
-        Map<String, AttributeValue> item = AWSUtil.getItemFromDB(ddbTableName,
-                itemPrimaryHashKey,
-                itemPrimaryHashKeyVal,
-                itemPrimarySortKey,
-                itemPrimarySortKeyVal,
-                logger);
-
-        Set<String> newLiftTimes = new HashSet<>();
-        Set<String> newLiftIDs = new HashSet<>();
-        Set<String> newLiftDays = new HashSet<>();
-        Map<String, AttributeValue> dailyVerticals = new HashMap<>();
-        String dayIDStr = Integer.toString(skierRequest.getDayID());
-        Integer newlyCumulativeVertical = skierRequest.getLiftID() * 10;
-        long newUpdateTime = System.currentTimeMillis();
-        Map<String, AttributeValue> newItem = new HashMap<>();
-        if (item != null && !item.isEmpty()) {     // Item exists.
-            newItem = new HashMap<>(item);
-            newItem.remove(itemPrimaryHashKey);
-            newItem.remove(itemPrimarySortKey);
-
-            newLiftTimes = new HashSet<>(item.get(itemAttrLiftTimes).ns());
-            newLiftTimes.add(Integer.toString(skierRequest.getTime()));
-
-            newLiftIDs = new HashSet<>(item.get(itemAttrLiftIDs).ns());
-            newLiftIDs.add(Integer.toString(skierRequest.getLiftID()));
-
-            newLiftDays = new HashSet<>(item.get(itemAttrLiftDays).ns());
-            newLiftDays.add(dayIDStr);
-
-            dailyVerticals = new HashMap<>(item.get(itemAttrDailyTotalVerticals).m());
-            AttributeValue curDailyTotalVertical = dailyVerticals.get(dayIDStr);
-            Integer newDailyTotalVertical;
-            if (curDailyTotalVertical != null) {
-                newDailyTotalVertical = Integer.parseInt(curDailyTotalVertical.n()) + newlyCumulativeVertical;
-            } else {
-                newDailyTotalVertical = newlyCumulativeVertical;
-            }
-            dailyVerticals.put(dayIDStr, AttributeValue.builder().n(Integer.toString(newDailyTotalVertical)).build());
-
-            oldUpdateTimeHolder[0] = Long.parseLong(item.get(itemAttrLastUpdateTime).n());
-            itemExistCheckerHolder[0] = true;
-        } else {                                    // Item doesn't exist.
-            newLiftTimes.add(Integer.toString(skierRequest.getTime()));
-            newLiftIDs.add(Integer.toString(skierRequest.getLiftID()));
-            newLiftDays.add(Integer.toString(skierRequest.getDayID()));
-
-            dailyVerticals.put(dayIDStr, AttributeValue.builder().n(Integer.toString(newlyCumulativeVertical)).build());
-
-            // Prepare key attributes only for DDB PutItem request.
-            newItem.put(itemPrimaryHashKey, AttributeValue.builder().s(itemPrimaryHashKeyVal).build());
-            newItem.put(itemPrimarySortKey, AttributeValue.builder().s(itemPrimarySortKeyVal).build());
-
-            itemExistCheckerHolder[0] = false;
-        }
-
-        newItem.put(itemAttrLiftTimes, AttributeValue.builder().ns(newLiftTimes).build());
-        newItem.put(itemAttrLiftIDs, AttributeValue.builder().ns(newLiftIDs).build());
-        newItem.put(itemAttrLiftDays, AttributeValue.builder().ns(newLiftDays).build());
-        newItem.put(itemAttrDailyTotalVerticals, AttributeValue.builder().m(dailyVerticals).build());
-        newItem.put(itemAttrLastUpdateTime, AttributeValue.builder().n(Long.toString(newUpdateTime)).build());
-
-        return newItem;
     }
 
 //    private void sleepExponentially(int sleepTimes) {

@@ -27,7 +27,8 @@ public abstract class SkierClientBase {
     protected final AtomicInteger successfulRequestCount;
     protected final AtomicInteger failedRequestCount;
     protected final int maxRetries = 7;
-    protected final long retryWaitTimeBaseMS = 100;
+    protected final long retryWaitTimeBaseMS = 400;
+    protected final HttpClient client;
 
     private static final int skiDayLenInMin = 420;
 
@@ -35,7 +36,6 @@ public abstract class SkierClientBase {
     private final static CountDownLatch shouldStartPhaseThree = new CountDownLatch(1);
 
     private final MultiThreadedHttpConnectionManager connectionManager;
-    protected final HttpClient client;
     private final ObjectMapper mapper;
     private final String serverAddr;
     private final String apiPath;
@@ -60,7 +60,7 @@ public abstract class SkierClientBase {
                            int skiDayNum,
                            final String resortName) {
         this.connectionManager = new MultiThreadedHttpConnectionManager();
-        this.client = new HttpClient(connectionManager);
+        this.client = new HttpClient(this.connectionManager);
         this.mapper = new ObjectMapper();
         this.serverAddr = serverAddr;
         this.apiPath = apiPath;
@@ -114,7 +114,7 @@ public abstract class SkierClientBase {
 
                     return true;
                 } else {
-                    System.out.printf("Got error response from server for GET request %s, will wait and retry.\n", targetUrl);
+//                    System.out.printf("Got error response from server for POST request %s, will wait and retry.\n", targetUrl);
                     AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
                 }
             } catch (IOException e) {
@@ -156,7 +156,7 @@ public abstract class SkierClientBase {
 
                     return true;
                 } else {
-                    System.out.printf("Got error response from server for POST request %s, will wait and retry.\n", targetUrl);
+//                    System.out.printf("Got error response from server for POST request %s, will wait and retry.\n", targetUrl);
                     AWSUtil.sleepExponentially(i, this.retryWaitTimeBaseMS);
                 }
             } catch (IOException e) {
@@ -222,6 +222,9 @@ public abstract class SkierClientBase {
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
         int[] timeSlides = getTimeSlides(1);
 
+        // Shuffle the inputs.
+        shuffleInputs(skierSplits, timeSlides);
+
         executePhase(1, targetThreadCount, skierSplits, timeSlides, 1000, 5);
     }
 
@@ -233,16 +236,23 @@ public abstract class SkierClientBase {
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
         int[] timeSlides = getTimeSlides(2);
 
+        // Shuffle the inputs.
+        shuffleInputs(skierSplits, timeSlides);
+
         executePhase(2, targetThreadCount, skierSplits, timeSlides, 1000, 5);
     }
 
     private void executePhaseThree() throws InterruptedException, ExecutionException, JsonProcessingException {
+        shouldStartPhaseTwo.await(1, TimeUnit.SECONDS);
         shouldStartPhaseThree.await(1, TimeUnit.SECONDS);
 
         // Setup requirements in phase 3.
         int targetThreadCount = this.maxThreadCount / 4;
         int[][] skierSplits = getSkierIdsSplits(targetThreadCount);
         int[] timeSlides = getTimeSlides(3);
+
+        // Shuffle the inputs.
+        shuffleInputs(skierSplits, timeSlides);
 
         executePhase(3, targetThreadCount, skierSplits, timeSlides, 1000, 10);
     }
@@ -314,12 +324,14 @@ public abstract class SkierClientBase {
         List<Future<Optional<TaskResponseStat>>> responses = executorService.invokeAll(tasks);
 
         // Process the responses.
-        if (isPhaseOne) {
-            processResponsesInThread(responses, true, false, targetRequestCount, targetThreadCount);
-        } else if (isPhaseTwo) {
-            processResponsesInThread(responses, false, true, targetRequestCount, targetThreadCount);
-        } else {
-            processResponsesInThread(responses, false, false, targetRequestCount, targetThreadCount);
+        if (isPostRequest) {
+            if (isPhaseOne) {
+                processResponsesInThread(responses, true, false, targetRequestCount, targetThreadCount);
+            } else if (isPhaseTwo) {
+                processResponsesInThread(responses, false, true, targetRequestCount, targetThreadCount);
+            } else {
+                processResponsesInThread(responses, false, false, targetRequestCount, targetThreadCount);
+            }
         }
     }
 
@@ -382,21 +394,20 @@ public abstract class SkierClientBase {
                                           int targetRequestCountPerThread,
                                           int targetThreadCount) throws ExecutionException, InterruptedException {
         // Waiting for all requests to be completed.
-        while (!responses.stream().allMatch(stat -> stat.isDone())) {
-            System.out.println("Waiting for all requests to complete...");
-
+        do {
             // Check if at least 10% of the threads complete their works.
             List<Future<Optional<TaskResponseStat>>> completedRequests = responses.stream()
                     .filter(stat -> stat.isDone()).collect(Collectors.toList());
 
+            int completedThreadCount = getCompletedThreadCount(completedRequests, targetRequestCountPerThread);
             // If so, execute the next phase.
             if (isPhaseOne || isPhaseTwo) {
-                if (getCompletedThreadCount(completedRequests, targetRequestCountPerThread) > (targetThreadCount / 10)) {
+                if (completedThreadCount >= (targetThreadCount / 10)) {
                     if (isPhaseOne) {
-                        System.out.println("Phase 1 reached at least 10% threads completion, notifying phase 2.");
+//                        System.out.println("Phase 1 reached at least 10% threads completion, notifying phase 2.");
                         shouldStartPhaseTwo.countDown();
                     } else if (isPhaseTwo) {
-                        System.out.println("Phase 2 reached at least 10% threads completion, notifying phase 3.");
+//                        System.out.println("Phase 2 reached at least 10% threads completion, notifying phase 3.");
                         shouldStartPhaseThree.countDown();
                     }
                 }
@@ -408,7 +419,7 @@ public abstract class SkierClientBase {
             } catch (InterruptedException e) {
                 System.out.printf("Encountered error during wait sleep %s\n", e);
             }
-        }
+        } while (!responses.stream().allMatch(stat -> stat.isDone()));
 
         // All requests should now be completed.
         for (Future<Optional<TaskResponseStat>> response : responses) {
@@ -522,11 +533,6 @@ public abstract class SkierClientBase {
                                             int[] timeSlides) throws JsonProcessingException {
         String[] requestBody = new String[targetRequestCount];
 
-        // Shuffle the inputs.
-        shuffleArray(skierSplit);
-        shuffleArray(timeSlides);
-        shuffleArray(this.skiLifts);
-
         // Generate request body based on the shuffled inputs.
         int i = 0, j = 0, k = 0, l = 0;
         while (l < targetRequestCount) {
@@ -561,7 +567,6 @@ public abstract class SkierClientBase {
         String[] requests = new String[targetRequestCount * 2];
 
         // Generate GET requests for https://app.swaggerhub.com/apis/cloud-perf/SkiDataAPI/1.13#/skiers/getSkierDayVertical
-        shuffleArray(skierSplit);
         int i = 0, j = 0;
         while (j < targetRequestCount) {
             if (i >= skierSplit.length) {
@@ -586,7 +591,6 @@ public abstract class SkierClientBase {
         }
 
         // Generate GET requests for https://app.swaggerhub.com/apis/cloud-perf/SkiDataAPI/1.13#/skiers/getSkierResortTotals
-        shuffleArray(skierSplit);
         i = 0;
         int k = 0;
         while (k < targetRequestCount) {
@@ -640,11 +644,12 @@ public abstract class SkierClientBase {
         return pathParam.replaceAll(" ", "%20");
     }
 
-//    private void sleepExponentially(int sleepTimes) {
-//        try {
-//            Thread.sleep(retryWaitTimeBaseMS * 2 * sleepTimes);
-//        } catch (InterruptedException e) {
-//            logger.error("Failed to sleep during retries attempt.", e);
-//        }
-//    }
+    private void shuffleInputs(int[][] skierSplits, int[] timeSlides) {
+        // Shuffle the inputs.
+        for (int[] skierSplit : skierSplits) {
+            shuffleArray(skierSplit);
+        }
+        shuffleArray(timeSlides);
+        shuffleArray(this.skiLifts);
+    }
 }

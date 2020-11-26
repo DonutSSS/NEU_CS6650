@@ -2,13 +2,15 @@ package utility;
 
 import lombok.NonNull;
 import org.apache.log4j.Logger;
-import server.IkkyoneServlet;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.apache.ApacheHttpClient;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
+import software.amazon.awssdk.services.sqs.SqsClient;
+import software.amazon.awssdk.services.sqs.model.*;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -21,6 +23,10 @@ public class AWSUtil {
     private final static DynamoDbClient dynamoDbClient = DynamoDbClient.builder()
             .httpClient(sdkHttpClient)
             .build();
+    private final static SqsClient sqsClient = SqsClient.builder()
+            .httpClient(sdkHttpClient)
+            .build();
+    private static String queueUrl;
 
     public static boolean putItemDDB(@NonNull final String ddbTableName,
                                      @NonNull final Map<String, AttributeValue> item,
@@ -111,11 +117,84 @@ public class AWSUtil {
         return null;
     }
 
+    public static void sendMsgToSQS(@NonNull final String queueName,
+                                    @NonNull final String messageBody) {
+        if (queueUrl == null) {
+            queueUrl = getQueueUrl(queueName);
+        }
+
+        SendMessageRequest request = SendMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .messageBody(messageBody)
+//                .messageGroupId("group1")
+                .build();
+
+        try {
+            sqsClient.sendMessage(request);
+        } catch (SqsException e) {
+            throw new RuntimeException(String.format("Failed to send message %s to queue %s",
+                    messageBody,
+                    queueName), e);
+        }
+    }
+
+    public static List<Message> getMsgFromSQS(@NonNull final String queueName) {
+        if (queueUrl == null) {
+            queueUrl = getQueueUrl(queueName);
+        }
+
+        ReceiveMessageRequest request = ReceiveMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .build();
+
+        try {
+            return sqsClient.receiveMessage(request).messages();
+        } catch (SqsException e) {
+            throw new RuntimeException(String.format("Failed to get messages from queue %s",
+                    queueName));
+        }
+    }
+
+    public static void deleteMsgInSQS(@NonNull final String queueName,
+                                      @NonNull final String msgReceiptHandle) {
+        if (queueUrl == null) {
+            queueUrl = getQueueUrl(queueName);
+        }
+
+        DeleteMessageRequest request = DeleteMessageRequest.builder()
+                .queueUrl(queueUrl)
+                .receiptHandle(msgReceiptHandle)
+                .build();
+
+        try {
+            sqsClient.deleteMessage(request);
+        } catch (SqsException e ) {
+            throw new RuntimeException(String.format("Failed to delete message %s from queue %s",
+                    msgReceiptHandle,
+                    queueName));
+        }
+    }
+
     public static void sleepExponentially(int sleepTimes, long retryWaitTimeBaseMS) {
         try {
-            Thread.sleep(retryWaitTimeBaseMS * 2 * sleepTimes);
+            long sleepTime = Math.max(1, retryWaitTimeBaseMS * 2 * sleepTimes);
+            Thread.sleep(sleepTime);
         } catch (InterruptedException e) {
             return;
         }
+    }
+
+    private static String getQueueUrl(@NonNull final String queueName) {
+        GetQueueUrlRequest request = GetQueueUrlRequest.builder()
+                .queueName(queueName)
+                .build();
+
+        GetQueueUrlResponse response = sqsClient.getQueueUrl(request);
+
+        if (response.queueUrl() != null) {
+            return response.queueUrl();
+        }
+
+        throw new IllegalArgumentException(String.format("Failed to retrieve queue url for queue: %s", queueName));
     }
 }

@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>neu.cs6650.lab2</groupId>
-    <artifactId>cs6650-lab2</artifactId>
+    <groupId>neu.cs6650.assign3</groupId>
+    <artifactId>cs6650-assign3</artifactId>
     <version>1.0</version>
 
     <build>
@@ -130,6 +130,12 @@
 
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sqs</artifactId>
+            <version>2.15.14</version>
+        </dependency>
+
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
             <artifactId>apache-client</artifactId>
             <version>2.2.0</version>
         </dependency>
@@ -138,6 +144,18 @@
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
             <version>4.5.9</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>1.6.1</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>1.6.1</version>
         </dependency>
     </dependencies>
 
