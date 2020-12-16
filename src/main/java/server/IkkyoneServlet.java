@@ -1,6 +1,5 @@
 package server;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.NonNull;
@@ -19,11 +18,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static utility.AWSUtil.writeToDDB;
+
 public class IkkyoneServlet extends javax.servlet.http.HttpServlet {
     private final static Logger logger = Logger.getLogger(IkkyoneServlet.class);
 
 //    public final static String sqsQueueName = "IkkyonePOSTQueue.fifo";
-public final static String sqsQueueName = "IkkyonePOSTQueue";
+    public final static String sqsQueueName = "IkkyonePOSTQueue";
     public final static String ddbTableName = "IkkyoneSkierTable";
     public final static String itemPrimaryHashKey = "SkierID";
     public final static String itemPrimarySortKey = "ResortID";
@@ -57,8 +58,8 @@ public final static String sqsQueueName = "IkkyonePOSTQueue";
                     return;
                 }
 
-//                processResult = writeToDDB(skierRequest);
-                processResult = publishToSQS(skierRequest);
+                processResult = writeToDDB(skierRequest);
+//                processResult = publishToSQS(skierRequest);
             }
         }
 
@@ -125,18 +126,6 @@ public final static String sqsQueueName = "IkkyonePOSTQueue";
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             response.getWriter().printf("Server fails to handle request, with url: %s\n",
                     request.getPathInfo());
-        }
-    }
-
-    private boolean publishToSQS(@NonNull final SkierPOSTRequest skierRequest) {
-        try {
-            String sqsMessageBody = mapper.writeValueAsString(skierRequest);
-
-            AWSUtil.sendMsgToSQS(sqsQueueName, sqsMessageBody);
-
-            return true;
-        } catch (JsonProcessingException e) {
-            throw new IllegalArgumentException(String.format("Failed to write POST request to sqs str: %s", skierRequest));
         }
     }
 

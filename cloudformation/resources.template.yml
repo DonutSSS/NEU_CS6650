@@ -16,7 +16,11 @@ Resources:
           KeyType: "HASH"
         - AttributeName: "ResortID"
           KeyType: "RANGE"
-      BillingMode: "PAY_PER_REQUEST"  # Ext, 3000RU / 5000WU for handling 512 max clients.
+#      BillingMode: "PAY_PER_REQUEST"  # Ext, 3000RU / 5000WU for handling 512 max clients.
+      BillingMode: "PROVISIONED"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 300
+        WriteCapacityUnits: 500
   ServerInstanceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -50,7 +54,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
-      InstanceType: "m5.2xlarge"
+      InstanceType: "t2.micro"
       KeyName: "neu-cs6650"
       SubnetId: "subnet-ed63e78b"
       SecurityGroupIds:
@@ -65,63 +69,63 @@ Resources:
               - "--resource ServerInstanceProfile "
               - "--configsets SetupTomcat "
               - "--region us-east-1\n"
-#  IkkyoneServerInstance02:
-#    Type: AWS::EC2::Instance
-#    Properties:
-#      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
-#      InstanceType: "t2.micro"
-#      KeyName: "neu-cs6650"
-#      SubnetId: "subnet-ed63e78b"
-#      SecurityGroupIds:
-#        - {Ref: ServerSecurityGroup}
-#      IamInstanceProfile: {Ref: ServerInstanceProfile}
-#      UserData:
-#        Fn::Base64:
-#          Fn::Join:
-#            - ""
-#            - - "#!/bin/bash -xue\n"
-#              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
-#              - "--resource ServerInstanceProfile "
-#              - "--configsets SetupTomcat "
-#              - "--region us-east-1\n"
-#  IkkyoneServerInstance03:
-#    Type: AWS::EC2::Instance
-#    Properties:
-#      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
-#      InstanceType: "t2.micro"
-#      KeyName: "neu-cs6650"
-#      SubnetId: "subnet-ed63e78b"
-#      SecurityGroupIds:
-#        - {Ref: ServerSecurityGroup}
-#      IamInstanceProfile: {Ref: ServerInstanceProfile}
-#      UserData:
-#        Fn::Base64:
-#          Fn::Join:
-#            - ""
-#            - - "#!/bin/bash -xue\n"
-#              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
-#              - "--resource ServerInstanceProfile "
-#              - "--configsets SetupTomcat "
-#              - "--region us-east-1\n"
-#  IkkyoneServerInstance04:
-#    Type: AWS::EC2::Instance
-#    Properties:
-#      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
-#      InstanceType: "t2.micro"
-#      KeyName: "neu-cs6650"
-#      SubnetId: "subnet-ed63e78b"
-#      SecurityGroupIds:
-#        - {Ref: ServerSecurityGroup}
-#      IamInstanceProfile: {Ref: ServerInstanceProfile}
-#      UserData:
-#        Fn::Base64:
-#          Fn::Join:
-#            - ""
-#            - - "#!/bin/bash -xue\n"
-#              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
-#              - "--resource ServerInstanceProfile "
-#              - "--configsets SetupTomcat "
-#              - "--region us-east-1\n"
+  IkkyoneServerInstance02:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
+      InstanceType: "t2.micro"
+      KeyName: "neu-cs6650"
+      SubnetId: "subnet-ed63e78b"
+      SecurityGroupIds:
+        - {Ref: ServerSecurityGroup}
+      IamInstanceProfile: {Ref: ServerInstanceProfile}
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            - - "#!/bin/bash -xue\n"
+              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
+              - "--resource ServerInstanceProfile "
+              - "--configsets SetupTomcat "
+              - "--region us-east-1\n"
+  IkkyoneServerInstance03:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
+      InstanceType: "t2.micro"
+      KeyName: "neu-cs6650"
+      SubnetId: "subnet-ed63e78b"
+      SecurityGroupIds:
+        - {Ref: ServerSecurityGroup}
+      IamInstanceProfile: {Ref: ServerInstanceProfile}
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            - - "#!/bin/bash -xue\n"
+              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
+              - "--resource ServerInstanceProfile "
+              - "--configsets SetupTomcat "
+              - "--region us-east-1\n"
+  IkkyoneServerInstance04:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: "ami-00514a528eadbc95b"  # Amazon Linux
+      InstanceType: "t2.micro"
+      KeyName: "neu-cs6650"
+      SubnetId: "subnet-ed63e78b"
+      SecurityGroupIds:
+        - {Ref: ServerSecurityGroup}
+      IamInstanceProfile: {Ref: ServerInstanceProfile}
+      UserData:
+        Fn::Base64:
+          Fn::Join:
+            - ""
+            - - "#!/bin/bash -xue\n"
+              - "sudo /opt/aws/bin/cfn-init -v --stack CS6650 "
+              - "--resource ServerInstanceProfile "
+              - "--configsets SetupTomcat "
+              - "--region us-east-1\n"
   IkkyoneServerInstance05:
     Type: AWS::EC2::Instance
     Properties:
@@ -203,18 +207,18 @@ Resources:
       TargetType: instance
       Targets:
         - {Id: {Ref: IkkyoneServerInstance01}}
-#        - {Id: {Ref: IkkyoneServerInstance02}}
-#        - {Id: {Ref: IkkyoneServerInstance03}}
-#        - {Id: {Ref: IkkyoneServerInstance04}}
+        - {Id: {Ref: IkkyoneServerInstance02}}
+        - {Id: {Ref: IkkyoneServerInstance03}}
+        - {Id: {Ref: IkkyoneServerInstance04}}
       VpcId: "vpc-7019c90d"   # Default VPC
 
 # SQS Resources.
-  IkkyonePOSTQueue:
-    Type: AWS::SQS::Queue
-    Properties:
-      MessageRetentionPeriod: 86400 # 1 Day.
-      VisibilityTimeout: 60
-      QueueName: "IkkyonePOSTQueue"
+#  IkkyonePOSTQueue:
+#    Type: AWS::SQS::Queue
+#    Properties:
+#      MessageRetentionPeriod: 86400 # 1 Day.
+#      VisibilityTimeout: 60
+#      QueueName: "IkkyonePOSTQueue"
 #      FifoQueue: "true"
 #      ContentBasedDeduplication: "true"
 #      QueueName: "IkkyonePOSTQueue.fifo"

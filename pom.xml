@@ -4,8 +4,8 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>neu.cs6650.assign3</groupId>
-    <artifactId>cs6650-assign3</artifactId>
+    <groupId>neu.cs6650.assign4</groupId>
+    <artifactId>cs6650-assign4</artifactId>
     <version>1.0</version>
 
     <build>
